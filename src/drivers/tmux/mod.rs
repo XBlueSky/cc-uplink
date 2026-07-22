@@ -119,48 +119,82 @@ impl TmuxDriver {
         // complete lines to `parse_inbound`, appending hits to the in-memory
         // ring buffer (drained by `recv`) and the JSONL conversation log.
         //
-        // Holds only a Weak ref (mirroring `ControlMode::attach`'s reader
-        // task): a strong clone here would create a reference cycle — this
-        // driver owns the `ControlMode` whose broadcast sender keeps `rx`
-        // alive, so a strong-held task would never observe channel closure
-        // and the driver (and its child `tmux -C` process) could never be
-        // dropped even once every external `Arc<TmuxDriver>` is released.
-        if let Some(mut rx) = d.events().await {
+        // Spawned unconditionally (even when no control-mode receiver exists
+        // yet at construction time) and structured as a resilient supervisor:
+        // an outer loop re-subscribes via `driver.events().await` whenever the
+        // inner drain loop ends — whether because the current `ControlMode`'s
+        // broadcast sender closed (e.g. `run()` lazily re-attached and
+        // replaced `self.cm`, dropping the old sender) or because no
+        // control-mode connection is up yet at all. Without this, a CM
+        // re-attach silently kills inbound `channel_recv` forever while
+        // `channel_doctor` keeps reporting the new CM as healthy.
+        //
+        // Holds only a Weak ref across the outer loop (mirroring
+        // `ControlMode::attach`'s reader task): a strong clone held for the
+        // life of the task would create a reference cycle — this driver owns
+        // the `ControlMode` whose broadcast sender keeps `rx` alive, so a
+        // strong-held task would never observe channel closure and the
+        // driver (and its child `tmux -C` process) could never be dropped
+        // even once every external `Arc<TmuxDriver>` is released. Each outer
+        // iteration upgrades only transiently — just long enough to check the
+        // driver is still alive and to call `events()` — and drops the
+        // strong ref before draining (which can block indefinitely on
+        // `rx.recv()`) or sleeping, so the task never pins the driver.
+        {
             let weak = Arc::downgrade(&d);
             let own_pane = d.own.pane.clone();
             tokio::spawn(async move {
                 let mut lb = LineBuffer::new();
                 loop {
-                    match rx.recv().await {
-                        Ok(ev) if ev.pane == own_pane => {
-                            let Some(dd) = weak.upgrade() else {
-                                break;
-                            };
-                            for line in lb.push(&ev.data) {
-                                if let Some(inb) = crate::core::envelope::parse_inbound(&line) {
-                                    let cursor = dd.next_cursor.fetch_add(1, Ordering::SeqCst);
-                                    let item = RecvItem {
-                                        cursor,
-                                        at: now_rfc3339(),
-                                        from: inb.from.clone(),
-                                        id: inb.id.clone(),
-                                        raw: line.clone(),
+                    let Some(driver) = weak.upgrade() else {
+                        // Driver dropped: nothing left to watch for.
+                        break;
+                    };
+                    let rx = driver.events().await;
+                    drop(driver);
+                    match rx {
+                        Some(mut rx) => loop {
+                            match rx.recv().await {
+                                Ok(ev) if ev.pane == own_pane => {
+                                    let Some(dd) = weak.upgrade() else {
+                                        break;
                                     };
-                                    dd.sink.append(&serde_json::json!({
-                                        "ts": item.at, "dir": "in", "from": item.from,
-                                        "id": item.id, "raw": item.raw
-                                    }));
-                                    let mut q = dd.inbox.lock().await;
-                                    if q.len() >= 1000 {
-                                        q.pop_front();
+                                    for line in lb.push(&ev.data) {
+                                        if let Some(inb) =
+                                            crate::core::envelope::parse_inbound(&line)
+                                        {
+                                            let cursor =
+                                                dd.next_cursor.fetch_add(1, Ordering::SeqCst);
+                                            let item = RecvItem {
+                                                cursor,
+                                                at: now_rfc3339(),
+                                                from: inb.from.clone(),
+                                                id: inb.id.clone(),
+                                                raw: line.clone(),
+                                            };
+                                            dd.sink.append(&serde_json::json!({
+                                                "ts": item.at, "dir": "in", "from": item.from,
+                                                "id": item.id, "raw": item.raw
+                                            }));
+                                            let mut q = dd.inbox.lock().await;
+                                            if q.len() >= 1000 {
+                                                q.pop_front();
+                                            }
+                                            q.push_back(item);
+                                        }
                                     }
-                                    q.push_back(item);
                                 }
+                                Ok(_) => {}
+                                Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {
+                                    continue;
+                                }
+                                Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
                             }
+                        },
+                        None => {
+                            // CM currently down: short backoff, then re-check.
+                            tokio::time::sleep(Duration::from_millis(500)).await;
                         }
-                        Ok(_) => {}
-                        Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
-                        Err(_) => break,
                     }
                 }
             });
@@ -730,8 +764,14 @@ impl Driver for TmuxDriver {
                     let k = k.as_str().ok_or_else(|| {
                         DriverError::new(ErrorKind::Invalid, "keys must be strings")
                     })?;
-                    self.run(&["send-keys".into(), "-t".into(), pane.clone(), k.into()])
-                        .await?;
+                    self.run(&[
+                        "send-keys".into(),
+                        "-t".into(),
+                        pane.clone(),
+                        "--".into(),
+                        k.into(),
+                    ])
+                    .await?;
                 }
                 Ok(serde_json::json!({ "sent": keys.len() }))
             }
