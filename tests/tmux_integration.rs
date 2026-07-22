@@ -94,3 +94,69 @@ async fn driver_channels_label_read() {
         .unwrap();
     assert!(out["text"].as_str().unwrap().contains("read-marker"));
 }
+
+#[tokio::test]
+async fn send_delivers_and_verifies() {
+    let Some(srv) = common::TmuxTestServer::start() else {
+        return;
+    };
+    let own = srv
+        .run(&["list-panes", "-t", "it", "-F", "#{pane_id}"])
+        .trim()
+        .to_string();
+    unsafe {
+        std::env::set_var("TMUX", format!("{},0,0", srv.sock()));
+        std::env::set_var("TMUX_PANE", &own);
+    }
+    // second pane runs `cat` — echoes what it receives
+    srv.run(&["split-window", "-t", "it", "-d", "cat"]);
+    let panes = srv.run(&["list-panes", "-t", "it", "-F", "#{pane_id}"]);
+    let target = panes
+        .lines()
+        .find(|p| p.trim() != own)
+        .unwrap()
+        .trim()
+        .to_string();
+
+    let d = cc_uplink::drivers::tmux::TmuxDriver::new(Default::default())
+        .await
+        .unwrap();
+    let r = d
+        .send(
+            &target,
+            cc_uplink::core::driver::SendRequest {
+                message: "ping from claude".into(),
+                reply_hint: cc_uplink::core::driver::ReplyHint::None,
+            },
+        )
+        .await
+        .unwrap();
+    assert!(r.delivered);
+    assert_eq!(r.correlation_id.len(), 8);
+
+    // sending to own pane is rejected
+    let e = d
+        .send(
+            &own,
+            cc_uplink::core::driver::SendRequest {
+                message: "loop".into(),
+                reply_hint: cc_uplink::core::driver::ReplyHint::None,
+            },
+        )
+        .await
+        .unwrap_err();
+    assert!(matches!(e.kind, cc_uplink::error::ErrorKind::Rejected));
+
+    // multiline is invalid
+    let e = d
+        .send(
+            &target,
+            cc_uplink::core::driver::SendRequest {
+                message: "a\nb".into(),
+                reply_hint: cc_uplink::core::driver::ReplyHint::None,
+            },
+        )
+        .await
+        .unwrap_err();
+    assert!(matches!(e.kind, cc_uplink::error::ErrorKind::Invalid));
+}

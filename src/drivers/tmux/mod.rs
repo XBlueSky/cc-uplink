@@ -3,6 +3,7 @@ pub mod protocol;
 pub mod transport;
 
 use std::sync::Arc;
+use std::time::Duration;
 
 use async_trait::async_trait;
 use tokio::sync::Mutex;
@@ -31,9 +32,6 @@ pub fn parse_pane_line(line: &str) -> Option<ChannelEntry> {
 }
 
 pub struct TmuxDriver {
-    // Reserved for allowlist/enabled enforcement, landing in a later task; not
-    // read yet, so silence the field-never-read lint rather than drop it.
-    #[allow(dead_code)]
     cfg: TmuxCfg,
     cli: OneShotCli,
     cm: Mutex<Option<Arc<ControlMode>>>,
@@ -140,6 +138,96 @@ impl TmuxDriver {
             .await?;
         Ok(serde_json::json!({ "text": out }))
     }
+
+    fn check_allowlist(&self, pane: &str, addr: &str) -> Result<(), DriverError> {
+        if let Some(list) = &self.cfg.allowlist {
+            if !list.iter().any(|x| x == pane || x == addr) {
+                return Err(DriverError::new(
+                    ErrorKind::Rejected,
+                    format!("target '{addr}' not in allowlist"),
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    async fn target_session(&self, pane: &str) -> Result<String, DriverError> {
+        Ok(self
+            .run(&[
+                "display-message".into(),
+                "-p".into(),
+                "-t".into(),
+                pane.into(),
+                "#{session_name}".into(),
+            ])
+            .await?
+            .trim()
+            .to_string())
+    }
+
+    async fn verify_token(
+        &self,
+        pane: &str,
+        token: &str,
+        mut rx: Option<tokio::sync::broadcast::Receiver<transport::PaneEvent>>,
+    ) -> Option<String> {
+        if let Some(rx) = rx.as_mut() {
+            let mut acc: Vec<u8> = vec![];
+            let deadline = tokio::time::Instant::now() + Duration::from_millis(1500);
+            while tokio::time::Instant::now() < deadline {
+                match tokio::time::timeout(Duration::from_millis(200), rx.recv()).await {
+                    Ok(Ok(ev)) if ev.pane == pane => {
+                        acc.extend_from_slice(&ev.data);
+                        let clean = protocol::strip_ansi(&acc);
+                        if clean.contains(token) {
+                            return Some(token.to_string());
+                        }
+                    }
+                    Ok(Ok(_)) => {}
+                    _ => {}
+                }
+            }
+        }
+        // capture fallback
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        let cap = self
+            .run(&[
+                "capture-pane".into(),
+                "-t".into(),
+                pane.into(),
+                "-p".into(),
+                "-J".into(),
+                "-S".into(),
+                "-5".into(),
+            ])
+            .await
+            .ok()?;
+        cap.contains(token).then(|| token.to_string())
+    }
+}
+
+/// Hand-rolled RFC3339 UTC timestamp (seconds precision) from `SystemTime`,
+/// avoiding a `chrono` dependency for a single call site. Uses the standard
+/// civil-calendar algorithm (Howard Hinnant's `civil_from_days`) to turn
+/// days-since-epoch into y/m/d.
+pub fn now_rfc3339() -> String {
+    let d = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default();
+    let secs = d.as_secs();
+    let (days, rem) = (secs / 86400, secs % 86400);
+    let (h, m, s) = (rem / 3600, (rem % 3600) / 60, rem % 60);
+    let z = days as i64 + 719468;
+    let era = z.div_euclid(146097);
+    let doe = z.rem_euclid(146097);
+    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
+    let y = yoe + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d_ = doy - (153 * mp + 2) / 5 + 1;
+    let mo = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = if mo <= 2 { y + 1 } else { y };
+    format!("{y:04}-{mo:02}-{d_:02}T{h:02}:{m:02}:{s:02}Z")
 }
 
 #[async_trait]
@@ -199,8 +287,99 @@ impl Driver for TmuxDriver {
         ]
     }
 
-    async fn send(&self, _addr: &str, _msg: SendRequest) -> Result<SendReceipt, DriverError> {
-        Err(DriverError::new(ErrorKind::Invalid, "not yet implemented"))
+    async fn send(&self, addr: &str, msg: SendRequest) -> Result<SendReceipt, DriverError> {
+        let pane = self.resolve(addr).await?;
+        if pane == self.own.pane {
+            return Err(DriverError::new(
+                ErrorKind::Rejected,
+                "cannot send to own pane (loop prevention)",
+            ));
+        }
+        self.check_allowlist(&pane, addr)?;
+        if msg.message.chars().any(|c| c.is_control()) {
+            return Err(DriverError::new(
+                ErrorKind::Invalid,
+                "message contains control characters",
+            )
+            .with_hint("single-line messages only in v1"));
+        }
+
+        let id = crate::core::envelope::new_correlation_id();
+        let from = self
+            .own
+            .label
+            .clone()
+            .unwrap_or_else(|| self.own.pane.clone());
+        let text = crate::core::envelope::format_outbound(
+            &from,
+            &self.own.pane,
+            &id,
+            &msg.message,
+            msg.reply_hint,
+        );
+        let token = format!("id:{id}");
+
+        let same_session = self.target_session(&pane).await? == self.own.session;
+        let rx = if same_session {
+            self.events().await
+        } else {
+            None
+        };
+
+        self.run(&[
+            "send-keys".into(),
+            "-t".into(),
+            pane.clone(),
+            "-l".into(),
+            "--".into(),
+            text.clone(),
+        ])
+        .await?;
+
+        let verified = self.verify_token(&pane, &token, rx).await;
+        match verified {
+            Some(excerpt) => {
+                self.run(&[
+                    "send-keys".into(),
+                    "-t".into(),
+                    pane.clone(),
+                    "Enter".into(),
+                ])
+                .await?;
+                Ok(SendReceipt {
+                    delivered: true,
+                    correlation_id: id,
+                    verify_excerpt: Some(excerpt),
+                    injected_at: now_rfc3339(),
+                })
+            }
+            None => {
+                let cap = self
+                    .run(&[
+                        "capture-pane".into(),
+                        "-t".into(),
+                        pane,
+                        "-p".into(),
+                        "-S".into(),
+                        "-5".into(),
+                    ])
+                    .await
+                    .unwrap_or_default();
+                let tail: String = cap
+                    .chars()
+                    .rev()
+                    .take(200)
+                    .collect::<String>()
+                    .chars()
+                    .rev()
+                    .collect();
+                Err(
+                    DriverError::new(ErrorKind::Timeout, "could not verify injected text")
+                        .with_evidence(tail)
+                        .with_hint("target TUI may have consumed input; inspect with read op"),
+                )
+            }
+        }
     }
 
     async fn invoke(
@@ -304,5 +483,12 @@ mod tests {
     fn empty_label_gives_no_labels() {
         let e = parse_pane_line("%0|main:0.0|zsh||/home/t").unwrap();
         assert!(e.labels.is_empty());
+    }
+
+    #[test]
+    fn now_rfc3339_shape() {
+        let s = now_rfc3339();
+        assert!(s.ends_with('Z'));
+        assert_eq!(s.len(), 20);
     }
 }
