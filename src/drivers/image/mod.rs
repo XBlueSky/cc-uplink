@@ -2,6 +2,7 @@
 //! [`ImageBackend`]s (openai, codex). One registry driver — adding a backend
 //! never adds an MCP tool, and never touches `Registry` routing.
 
+pub mod codex;
 pub mod openai;
 
 use async_trait::async_trait;

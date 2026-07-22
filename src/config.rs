@@ -14,6 +14,8 @@ pub struct DriversCfg {
     pub tmux: TmuxCfg,
     #[serde(default, rename = "image-openai")]
     pub image_openai: ImageOpenAiCfg,
+    #[serde(default, rename = "image-codex")]
+    pub image_codex: ImageCodexCfg,
 }
 
 #[derive(Debug, Deserialize)]
@@ -54,6 +56,27 @@ impl Default for ImageOpenAiCfg {
             base_url: default_openai_base(),
         }
     }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct ImageCodexCfg {
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    #[serde(default = "default_codex_bin")]
+    pub codex_bin: String,
+}
+
+impl Default for ImageCodexCfg {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            codex_bin: default_codex_bin(),
+        }
+    }
+}
+
+fn default_codex_bin() -> String {
+    "codex".into()
 }
 
 fn default_true() -> bool {
@@ -140,5 +163,22 @@ mod tests {
         assert_eq!(c.drivers.image_openai.api_key_env, "MY_KEY");
         assert_eq!(c.drivers.image_openai.model, "gpt-image-1-mini");
         assert_eq!(c.drivers.image_openai.base_url, "http://127.0.0.1:8080/v1");
+    }
+
+    #[test]
+    fn image_codex_defaults() {
+        let c = Config::from_str("").unwrap();
+        assert!(c.drivers.image_codex.enabled);
+        assert_eq!(c.drivers.image_codex.codex_bin, "codex");
+    }
+
+    #[test]
+    fn image_codex_section_parses() {
+        let c = Config::from_str(
+            "[drivers.image-codex]\nenabled = false\ncodex_bin = \"/opt/codex/bin/codex\"\n",
+        )
+        .unwrap();
+        assert!(!c.drivers.image_codex.enabled);
+        assert_eq!(c.drivers.image_codex.codex_bin, "/opt/codex/bin/codex");
     }
 }
