@@ -1,4 +1,5 @@
 mod common;
+use cc_uplink::core::driver::Driver;
 use cc_uplink::drivers::tmux::control::ControlMode;
 use cc_uplink::drivers::tmux::transport::{OneShotCli, TmuxTransport};
 
@@ -55,4 +56,41 @@ async fn control_mode_attach_run_and_events() {
         }
     }
     assert!(seen, "expected %output containing marker");
+}
+
+#[tokio::test]
+async fn driver_channels_label_read() {
+    let Some(srv) = common::TmuxTestServer::start() else {
+        return;
+    };
+    // Run the driver against the private server: point $TMUX/$TMUX_PANE at it.
+    // own_context needs TMUX_PANE; use the first pane of session "it".
+    let pane = srv
+        .run(&["list-panes", "-t", "it", "-F", "#{pane_id}"])
+        .trim()
+        .to_string();
+    unsafe {
+        std::env::set_var("TMUX", format!("{},0,0", srv.sock()));
+        std::env::set_var("TMUX_PANE", &pane);
+    }
+    let d = cc_uplink::drivers::tmux::TmuxDriver::new(Default::default())
+        .await
+        .unwrap();
+    let chans = d.channels().await.unwrap();
+    assert!(chans.iter().any(|c| c.channel == format!("tmux:{pane}")));
+
+    d.invoke(&pane, "label", serde_json::json!({"name":"selfpane"}))
+        .await
+        .unwrap();
+    let resolved = d.resolve("selfpane").await.unwrap();
+    assert_eq!(resolved, pane);
+
+    srv.run(&["send-keys", "-t", "it", "-l", "echo read-marker"]);
+    srv.run(&["send-keys", "-t", "it", "Enter"]);
+    tokio::time::sleep(std::time::Duration::from_millis(400)).await;
+    let out = d
+        .invoke(&pane, "read", serde_json::json!({"lines": 20}))
+        .await
+        .unwrap();
+    assert!(out["text"].as_str().unwrap().contains("read-marker"));
 }

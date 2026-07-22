@@ -8,4 +8,5 @@ check:
   script:
     - cargo fmt --check
     - cargo clippy --release --all-targets -- -D warnings
-    - cargo test
+    - cargo test --lib
+    - cargo test --test tmux_integration -- --test-threads=1
