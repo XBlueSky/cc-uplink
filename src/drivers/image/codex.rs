@@ -96,6 +96,192 @@ pub(crate) fn version_ok(v: (u64, u64, u64)) -> bool {
     v >= (0, 142, 0)
 }
 
+use async_trait::async_trait;
+use serde::Deserialize;
+
+use crate::config::ImageCodexCfg;
+use crate::core::driver::OpSpec;
+use crate::drivers::image::{ImageBackend, clip_tail};
+use crate::error::{DriverError, ErrorKind};
+
+const CODEX_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(600);
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct CodexGenerateArgs {
+    pub prompt: String,
+    pub refs: Option<Vec<String>>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct CodexEditArgs {
+    pub input: String,
+    pub prompt: String,
+}
+
+pub struct CodexBackend {
+    cfg: ImageCodexCfg,
+}
+
+fn bad_args(e: serde_json::Error) -> DriverError {
+    DriverError::new(ErrorKind::Invalid, format!("bad args: {e}"))
+        .with_hint("run channel_describe(image:codex) for the exact schema")
+}
+
+/// Existing file → absolute path (spec §7 requires absolute paths both in
+/// `--image` argv and in the instruction text).
+fn abs_existing(path: &str) -> Result<PathBuf, DriverError> {
+    std::fs::canonicalize(path).map_err(|e| {
+        DriverError::new(ErrorKind::Invalid, format!("image file '{path}': {e}"))
+            .with_hint("pass paths to existing image files")
+    })
+}
+
+impl CodexBackend {
+    pub(crate) fn new(cfg: ImageCodexCfg) -> Self {
+        Self { cfg }
+    }
+
+    async fn run_exec(
+        &self,
+        instruction: &str,
+        images: &[PathBuf],
+    ) -> Result<Vec<String>, DriverError> {
+        let mut cmd = tokio::process::Command::new(&self.cfg.codex_bin);
+        cmd.args(exec_args(instruction, images))
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .kill_on_drop(true);
+        let out = tokio::time::timeout(CODEX_TIMEOUT, cmd.output())
+            .await
+            .map_err(|_| {
+                DriverError::new(
+                    ErrorKind::Timeout,
+                    format!("codex exec timed out after {}s", CODEX_TIMEOUT.as_secs()),
+                )
+            })?
+            .map_err(|e| {
+                DriverError::new(
+                    ErrorKind::Unavailable,
+                    format!("cannot run '{}': {e}", self.cfg.codex_bin),
+                )
+                .with_hint("install @openai/codex >= 0.142 or set drivers.image-codex.codex_bin")
+            })?;
+        let stdout = String::from_utf8_lossy(&out.stdout).to_string();
+        if !out.status.success() {
+            let stderr = String::from_utf8_lossy(&out.stderr).to_string();
+            let ev = if stderr.trim().is_empty() {
+                &stdout
+            } else {
+                &stderr
+            };
+            return Err(DriverError::new(
+                ErrorKind::Upstream,
+                format!("codex exec failed ({})", out.status),
+            )
+            .with_evidence(clip_tail(ev, 500)));
+        }
+        let saved = parse_saved_lines(&stdout);
+        if saved.is_empty() {
+            return Err(DriverError::new(
+                ErrorKind::Upstream,
+                "codex finished without printing any 'SAVED: <path>' line",
+            )
+            .with_evidence(clip_tail(&stdout, 500)));
+        }
+        Ok(saved)
+    }
+}
+
+#[async_trait]
+impl ImageBackend for CodexBackend {
+    fn name(&self) -> &'static str {
+        "codex"
+    }
+
+    fn detail(&self) -> serde_json::Value {
+        serde_json::json!({ "codex_bin": self.cfg.codex_bin })
+    }
+
+    fn ops(&self) -> Vec<OpSpec> {
+        vec![
+            OpSpec {
+                op: "generate".into(),
+                summary: "[codex] generate image(s) via Codex CLI's built-in imagegen (uses your codex login; no API key)".into(),
+                params_schema: serde_json::json!({
+                    "type": "object",
+                    "required": ["prompt"],
+                    "additionalProperties": false,
+                    "properties": {
+                        "prompt": {"type": "string", "description": "natural-language request; express size/count/output path inside the prompt"},
+                        "refs": {"type": "array", "items": {"type": "string"}, "description": "reference image file paths (max 5)"}
+                    }
+                }),
+                result_schema: serde_json::json!({
+                    "type": "object",
+                    "properties": {"paths": {"type": "array", "items": {"type": "string"}}}
+                }),
+            },
+            OpSpec {
+                op: "edit".into(),
+                summary: "[codex] edit an existing image via Codex CLI's built-in imagegen".into(),
+                params_schema: serde_json::json!({
+                    "type": "object",
+                    "required": ["input", "prompt"],
+                    "additionalProperties": false,
+                    "properties": {
+                        "input": {"type": "string", "description": "input image file path"},
+                        "prompt": {"type": "string"}
+                    }
+                }),
+                result_schema: serde_json::json!({
+                    "type": "object",
+                    "properties": {"paths": {"type": "array", "items": {"type": "string"}}}
+                }),
+            },
+        ]
+    }
+
+    async fn invoke(
+        &self,
+        op: &str,
+        args: serde_json::Value,
+    ) -> Result<serde_json::Value, DriverError> {
+        match op {
+            "generate" => {
+                let a: CodexGenerateArgs = serde_json::from_value(args).map_err(bad_args)?;
+                let refs = a
+                    .refs
+                    .unwrap_or_default()
+                    .iter()
+                    .map(|r| abs_existing(r))
+                    .collect::<Result<Vec<_>, _>>()?;
+                let instruction = build_instruction(&a.prompt, &refs);
+                let saved = self.run_exec(&instruction, &refs).await?;
+                Ok(serde_json::json!({ "paths": saved }))
+            }
+            "edit" => {
+                let a: CodexEditArgs = serde_json::from_value(args).map_err(bad_args)?;
+                let input = abs_existing(&a.input)?;
+                let instruction = build_edit_instruction(&input, &a.prompt);
+                let saved = self.run_exec(&instruction, &[input]).await?;
+                Ok(serde_json::json!({ "paths": saved }))
+            }
+            other => Err(DriverError::new(
+                ErrorKind::NotFound,
+                format!("no op '{other}' on image:codex"),
+            )
+            .with_hint("run channel_describe(image:codex)")),
+        }
+    }
+
+    async fn doctor_lines(&self) -> (bool, Vec<String>) {
+        (false, vec!["doctor: not implemented yet".into()])
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -156,5 +342,163 @@ mod tests {
         assert!(version_ok((0, 142, 0)));
         assert!(version_ok((1, 0, 0)));
         assert!(!version_ok((0, 141, 9)));
+    }
+
+    use crate::config::ImageCodexCfg;
+    use crate::error::ErrorKind;
+
+    /// Write an executable `codex` fake into `dir`. `body` is sh after the
+    /// shebang. Tests bake absolute output paths directly into the script —
+    /// no env-var plumbing.
+    fn fake_codex(dir: &Path, body: &str) -> PathBuf {
+        use std::os::unix::fs::PermissionsExt;
+        let p = dir.join("codex");
+        std::fs::write(&p, format!("#!/bin/sh\n{body}")).unwrap();
+        std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).unwrap();
+        p
+    }
+
+    fn backend(bin: &Path) -> CodexBackend {
+        CodexBackend::new(ImageCodexCfg {
+            enabled: true,
+            codex_bin: bin.display().to_string(),
+        })
+    }
+
+    #[tokio::test]
+    async fn generate_argv_contract_stdin_null_and_saved_parsing() {
+        let tmp = tempfile::tempdir().unwrap();
+        let argv_file = tmp.path().join("argv.txt");
+        let refpng = tmp.path().join("ref.png");
+        std::fs::write(&refpng, b"png").unwrap();
+        // `cat >/dev/null` hangs forever unless stdin is null/EOF — the 10s
+        // timeout wrapper converts a stdin-discipline regression into a fail.
+        let script = format!(
+            "printf '%s\\n' \"$@\" > {argv}\ncat >/dev/null\necho 'model thinking noise'\necho 'SAVED: /tmp/uplink-fake-out.png'\n",
+            argv = argv_file.display()
+        );
+        let b = backend(&fake_codex(tmp.path(), &script));
+        let out = tokio::time::timeout(
+            std::time::Duration::from_secs(10),
+            b.invoke(
+                "generate",
+                serde_json::json!({"prompt": "a cat", "refs": [refpng.to_str().unwrap()]}),
+            ),
+        )
+        .await
+        .expect("must not hang: stdin must be Stdio::null")
+        .unwrap();
+        assert_eq!(
+            out["paths"],
+            serde_json::json!(["/tmp/uplink-fake-out.png"])
+        );
+
+        let argv = std::fs::read_to_string(&argv_file).unwrap();
+        let lines: Vec<&str> = argv.lines().collect();
+        assert_eq!(
+            &lines[..3],
+            &["exec", "--full-auto", "--skip-git-repo-check"]
+        );
+        assert_eq!(lines[3], "--image");
+        let canon = std::fs::canonicalize(&refpng)
+            .unwrap()
+            .display()
+            .to_string();
+        assert_eq!(lines[4], canon);
+        let instruction = lines[5..].join("\n");
+        assert!(instruction.contains("a cat"));
+        assert!(
+            instruction.contains(&canon),
+            "abs ref path must be IN the instruction text"
+        );
+        assert!(instruction.contains("SAVED:"));
+    }
+
+    #[tokio::test]
+    async fn edit_attaches_input_as_image() {
+        let tmp = tempfile::tempdir().unwrap();
+        let argv_file = tmp.path().join("argv.txt");
+        let input = tmp.path().join("in.png");
+        std::fs::write(&input, b"png").unwrap();
+        let script = format!(
+            "printf '%s\\n' \"$@\" > {argv}\necho 'SAVED: /tmp/uplink-fake-edit.png'\n",
+            argv = argv_file.display()
+        );
+        let b = backend(&fake_codex(tmp.path(), &script));
+        let out = b
+            .invoke(
+                "edit",
+                serde_json::json!({"input": input.to_str().unwrap(), "prompt": "tint blue"}),
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            out["paths"],
+            serde_json::json!(["/tmp/uplink-fake-edit.png"])
+        );
+        let argv = std::fs::read_to_string(&argv_file).unwrap();
+        let canon = std::fs::canonicalize(&input).unwrap().display().to_string();
+        assert!(argv.lines().any(|l| l == canon));
+        assert!(argv.contains("tint blue"));
+    }
+
+    #[tokio::test]
+    async fn nonzero_exit_is_upstream_with_stderr_evidence() {
+        let tmp = tempfile::tempdir().unwrap();
+        let b = backend(&fake_codex(
+            tmp.path(),
+            "echo 'boom: sandbox denied' >&2\nexit 3\n",
+        ));
+        let e = b
+            .invoke("generate", serde_json::json!({"prompt": "x"}))
+            .await
+            .err()
+            .unwrap();
+        assert!(matches!(e.kind, ErrorKind::Upstream));
+        assert!(e.evidence.unwrap().contains("sandbox denied"));
+    }
+
+    #[tokio::test]
+    async fn no_saved_line_is_upstream_with_stdout_evidence() {
+        let tmp = tempfile::tempdir().unwrap();
+        let b = backend(&fake_codex(tmp.path(), "echo 'I generated it, trust me'\n"));
+        let e = b
+            .invoke("generate", serde_json::json!({"prompt": "x"}))
+            .await
+            .err()
+            .unwrap();
+        assert!(matches!(e.kind, ErrorKind::Upstream));
+        assert!(e.message.contains("SAVED"));
+        assert!(e.evidence.unwrap().contains("trust me"));
+    }
+
+    #[tokio::test]
+    async fn missing_binary_is_unavailable_with_install_hint() {
+        let b = CodexBackend::new(ImageCodexCfg {
+            enabled: true,
+            codex_bin: "/nonexistent/cc-uplink-no-such-codex".into(),
+        });
+        let e = b
+            .invoke("generate", serde_json::json!({"prompt": "x"}))
+            .await
+            .err()
+            .unwrap();
+        assert!(matches!(e.kind, ErrorKind::Unavailable));
+        assert!(e.hint.unwrap().contains("codex"));
+    }
+
+    #[tokio::test]
+    async fn missing_ref_file_is_invalid() {
+        let tmp = tempfile::tempdir().unwrap();
+        let b = backend(&fake_codex(tmp.path(), "echo 'SAVED: /x.png'\n"));
+        let e = b
+            .invoke(
+                "generate",
+                serde_json::json!({"prompt": "x", "refs": ["/no/such/ref.png"]}),
+            )
+            .await
+            .err()
+            .unwrap();
+        assert!(matches!(e.kind, ErrorKind::Invalid));
     }
 }
