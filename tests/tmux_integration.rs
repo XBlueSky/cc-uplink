@@ -160,3 +160,42 @@ async fn send_delivers_and_verifies() {
         .unwrap_err();
     assert!(matches!(e.kind, cc_uplink::error::ErrorKind::Invalid));
 }
+
+#[tokio::test]
+async fn keys_requires_recent_read() {
+    let Some(srv) = common::TmuxTestServer::start() else {
+        return;
+    };
+    let own = srv
+        .run(&["list-panes", "-t", "it", "-F", "#{pane_id}"])
+        .trim()
+        .to_string();
+    unsafe {
+        std::env::set_var("TMUX", format!("{},0,0", srv.sock()));
+        std::env::set_var("TMUX_PANE", &own);
+    }
+    srv.run(&["split-window", "-t", "it", "-d", "cat"]);
+    let panes = srv.run(&["list-panes", "-t", "it", "-F", "#{pane_id}"]);
+    let target = panes
+        .lines()
+        .find(|p| p.trim() != own)
+        .unwrap()
+        .trim()
+        .to_string();
+    let d = cc_uplink::drivers::tmux::TmuxDriver::new(Default::default())
+        .await
+        .unwrap();
+
+    let e = d
+        .invoke(&target, "keys", serde_json::json!({"keys":["Enter"]}))
+        .await
+        .unwrap_err();
+    assert!(matches!(e.kind, cc_uplink::error::ErrorKind::Rejected));
+
+    d.invoke(&target, "read", serde_json::json!({"lines":5}))
+        .await
+        .unwrap();
+    d.invoke(&target, "keys", serde_json::json!({"keys":["Enter"]}))
+        .await
+        .unwrap();
+}

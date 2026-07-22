@@ -36,6 +36,12 @@ pub struct TmuxDriver {
     cli: OneShotCli,
     cm: Mutex<Option<Arc<ControlMode>>>,
     pub own: OwnCtx,
+    read_marks: Mutex<std::collections::HashMap<String, std::time::Instant>>,
+}
+
+/// Pure guard check: is `mark` present and younger than `ttl`?
+pub fn guard_ok(mark: Option<std::time::Instant>, ttl: Duration) -> bool {
+    mark.map(|t| t.elapsed() <= ttl).unwrap_or(false)
 }
 
 impl TmuxDriver {
@@ -50,6 +56,7 @@ impl TmuxDriver {
             cli,
             cm: Mutex::new(cm),
             own,
+            read_marks: Mutex::new(std::collections::HashMap::new()),
         });
         // best-effort defaults
         let _ = d
@@ -136,6 +143,10 @@ impl TmuxDriver {
                 format!("-{lines}"),
             ])
             .await?;
+        self.read_marks
+            .lock()
+            .await
+            .insert(pane.to_string(), std::time::Instant::now());
         Ok(serde_json::json!({ "text": out }))
     }
 
@@ -410,7 +421,35 @@ impl Driver for TmuxDriver {
                 .await?;
                 Ok(serde_json::json!({ "labeled": pane, "name": name }))
             }
-            "keys" | "await_idle" | "ask" => {
+            "keys" => {
+                if pane == self.own.pane {
+                    return Err(DriverError::new(
+                        ErrorKind::Rejected,
+                        "cannot send keys to own pane",
+                    ));
+                }
+                self.check_allowlist(&pane, addr)?;
+                let mark = self.read_marks.lock().await.get(&pane).copied();
+                if !guard_ok(mark, Duration::from_secs(60)) {
+                    return Err(DriverError::new(
+                        ErrorKind::Rejected,
+                        "read guard: pane not read recently",
+                    )
+                    .with_hint("invoke read on this pane first"));
+                }
+                let keys = args.get("keys").and_then(|v| v.as_array()).ok_or_else(|| {
+                    DriverError::new(ErrorKind::Invalid, "keys requires 'keys' array")
+                })?;
+                for k in keys {
+                    let k = k.as_str().ok_or_else(|| {
+                        DriverError::new(ErrorKind::Invalid, "keys must be strings")
+                    })?;
+                    self.run(&["send-keys".into(), "-t".into(), pane.clone(), k.into()])
+                        .await?;
+                }
+                Ok(serde_json::json!({ "sent": keys.len() }))
+            }
+            "await_idle" | "ask" => {
                 Err(DriverError::new(ErrorKind::Invalid, "not yet implemented"))
             }
             other => Err(
@@ -464,6 +503,22 @@ impl Driver for TmuxDriver {
             ok,
             lines,
         }
+    }
+}
+
+#[cfg(test)]
+mod guard_tests {
+    use super::*;
+    use std::time::{Duration, Instant};
+
+    #[test]
+    fn guard_accepts_fresh_rejects_stale_and_missing() {
+        assert!(guard_ok(Some(Instant::now()), Duration::from_secs(60)));
+        assert!(!guard_ok(
+            Some(Instant::now() - Duration::from_secs(61)),
+            Duration::from_secs(60)
+        ));
+        assert!(!guard_ok(None, Duration::from_secs(60)));
     }
 }
 
