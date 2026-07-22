@@ -199,3 +199,49 @@ async fn keys_requires_recent_read() {
         .await
         .unwrap();
 }
+
+#[tokio::test]
+async fn ask_returns_transcript_delta() {
+    let Some(srv) = common::TmuxTestServer::start() else {
+        return;
+    };
+    let own = srv
+        .run(&["list-panes", "-t", "it", "-F", "#{pane_id}"])
+        .trim()
+        .to_string();
+    unsafe {
+        std::env::set_var("TMUX", format!("{},0,0", srv.sock()));
+        std::env::set_var("TMUX_PANE", &own);
+    }
+    // target pane: a shell that will execute what we send after Enter
+    srv.run(&["split-window", "-t", "it", "-d", "sh"]);
+    let panes = srv.run(&["list-panes", "-t", "it", "-F", "#{pane_id}"]);
+    let target = panes
+        .lines()
+        .find(|p| p.trim() != own)
+        .unwrap()
+        .trim()
+        .to_string();
+    let d = cc_uplink::drivers::tmux::TmuxDriver::new(Default::default())
+        .await
+        .unwrap();
+
+    // 'ask' a shell: the injected envelope is not a valid command (sh prints error),
+    // but the transcript delta must contain both the envelope and the shell's reaction.
+    let out = d
+        .invoke(
+            &target,
+            "ask",
+            serde_json::json!({
+                "message": "echo uplink-ask-answer", "quiet_ms": 800, "timeout_ms": 15000
+            }),
+        )
+        .await
+        .unwrap();
+    let t = out["transcript"].as_str().unwrap();
+    assert!(
+        t.contains("uplink-ask-answer") || t.contains("[uplink"),
+        "transcript should contain the exchange, got: {t}"
+    );
+    assert!(out["receipt"]["delivered"].as_bool().unwrap());
+}

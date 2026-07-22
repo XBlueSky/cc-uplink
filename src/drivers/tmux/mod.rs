@@ -215,6 +215,194 @@ impl TmuxDriver {
             .ok()?;
         cap.contains(token).then(|| token.to_string())
     }
+
+    async fn history_size(&self, pane: &str) -> Result<u64, DriverError> {
+        let out = self
+            .run(&[
+                "display-message".into(),
+                "-p".into(),
+                "-t".into(),
+                pane.into(),
+                "#{history_size}".into(),
+            ])
+            .await?;
+        out.trim()
+            .parse()
+            .map_err(|_| DriverError::new(ErrorKind::Upstream, "bad history_size"))
+    }
+
+    async fn pane_height(&self, pane: &str) -> Result<u64, DriverError> {
+        let out = self
+            .run(&[
+                "display-message".into(),
+                "-p".into(),
+                "-t".into(),
+                pane.into(),
+                "#{pane_height}".into(),
+            ])
+            .await?;
+        out.trim()
+            .parse()
+            .map_err(|_| DriverError::new(ErrorKind::Upstream, "bad pane_height"))
+    }
+
+    async fn op_await_idle(
+        &self,
+        pane: &str,
+        quiet_ms: u64,
+        timeout_ms: u64,
+    ) -> Result<serde_json::Value, DriverError> {
+        let start = tokio::time::Instant::now();
+        let deadline = start + Duration::from_millis(timeout_ms);
+        let same = self.target_session(pane).await? == self.own.session;
+        let mut rx = if same { self.events().await } else { None };
+
+        if let Some(rx) = rx.as_mut() {
+            let mut last = tokio::time::Instant::now();
+            loop {
+                if tokio::time::Instant::now() > deadline {
+                    return Err(DriverError::new(
+                        ErrorKind::Timeout,
+                        "pane did not become idle",
+                    ));
+                }
+                match tokio::time::timeout(Duration::from_millis(quiet_ms), rx.recv()).await {
+                    Ok(Ok(ev)) if ev.pane == pane => {
+                        last = tokio::time::Instant::now();
+                    }
+                    Ok(Ok(_)) => {
+                        if last.elapsed() >= Duration::from_millis(quiet_ms) {
+                            break;
+                        }
+                    }
+                    // Timeout elapsed with no event at all for quiet_ms: genuine idle signal.
+                    Err(_) => {
+                        if last.elapsed() >= Duration::from_millis(quiet_ms) {
+                            break;
+                        }
+                    }
+                    // Receiver fell behind and the broadcast channel dropped events; some of
+                    // those dropped events may have belonged to the target pane. Treat this
+                    // as activity (not idle) so a transcript-capture op waits longer rather
+                    // than risking a truncated capture.
+                    Ok(Err(tokio::sync::broadcast::error::RecvError::Lagged(_))) => {
+                        last = tokio::time::Instant::now();
+                    }
+                    // All senders are gone; recv() would busy-spin forever on this receiver.
+                    // Stop using the event path and finish via the polling fallback, honoring
+                    // the same quiet_ms/deadline.
+                    Ok(Err(tokio::sync::broadcast::error::RecvError::Closed)) => {
+                        return self.poll_idle(pane, quiet_ms, deadline).await;
+                    }
+                }
+            }
+        } else {
+            return self.poll_idle(pane, quiet_ms, deadline).await;
+        }
+        Ok(serde_json::json!({ "idle": true, "waited_ms": start.elapsed().as_millis() as u64 }))
+    }
+
+    /// Polling-based idle detection: waits until `#{history_size}:#{cursor_x},#{cursor_y}`
+    /// is stable for `quiet_ms`, or returns a timeout error at `deadline`. This is the
+    /// fallback used when no event stream is available (cross-session target) and when
+    /// an event receiver's broadcast channel has closed mid-wait.
+    async fn poll_idle(
+        &self,
+        pane: &str,
+        quiet_ms: u64,
+        deadline: tokio::time::Instant,
+    ) -> Result<serde_json::Value, DriverError> {
+        let start = tokio::time::Instant::now();
+        let mut last_probe = String::new();
+        let mut stable_since = tokio::time::Instant::now();
+        loop {
+            if tokio::time::Instant::now() > deadline {
+                return Err(DriverError::new(
+                    ErrorKind::Timeout,
+                    "pane did not become idle",
+                ));
+            }
+            let probe = self
+                .run(&[
+                    "display-message".into(),
+                    "-p".into(),
+                    "-t".into(),
+                    pane.into(),
+                    "#{history_size}:#{cursor_x},#{cursor_y}".into(),
+                ])
+                .await?;
+            if probe == last_probe {
+                if stable_since.elapsed() >= Duration::from_millis(quiet_ms) {
+                    break;
+                }
+            } else {
+                last_probe = probe;
+                stable_since = tokio::time::Instant::now();
+            }
+            tokio::time::sleep(Duration::from_millis(300)).await;
+        }
+        Ok(serde_json::json!({ "idle": true, "waited_ms": start.elapsed().as_millis() as u64 }))
+    }
+
+    async fn op_ask(
+        &self,
+        addr: &str,
+        pane: &str,
+        args: &serde_json::Value,
+    ) -> Result<serde_json::Value, DriverError> {
+        let message = args
+            .get("message")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| DriverError::new(ErrorKind::Invalid, "ask requires 'message'"))?;
+        let quiet_ms = args
+            .get("quiet_ms")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(1500);
+        let timeout_ms = args
+            .get("timeout_ms")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(120_000);
+
+        let h0 = self.history_size(pane).await?;
+        let receipt = Driver::send(
+            self,
+            addr,
+            SendRequest {
+                message: message.to_string(),
+                reply_hint: ReplyHint::Full,
+            },
+        )
+        .await?;
+        self.op_await_idle(pane, quiet_ms, timeout_ms).await?;
+
+        let h1 = self.history_size(pane).await?;
+        let height = self.pane_height(pane).await?;
+        let back = (h1.saturating_sub(h0)) + height;
+        let cap = self
+            .run(&[
+                "capture-pane".into(),
+                "-t".into(),
+                pane.into(),
+                "-p".into(),
+                "-J".into(),
+                "-S".into(),
+                format!("-{back}"),
+            ])
+            .await?;
+        let token = format!("id:{}", receipt.correlation_id);
+        let transcript = match cap.find(&token) {
+            Some(pos) => {
+                let line_start = cap[..pos].rfind('\n').map(|i| i + 1).unwrap_or(0);
+                cap[line_start..].to_string()
+            }
+            None => cap,
+        };
+        self.read_marks
+            .lock()
+            .await
+            .insert(pane.to_string(), std::time::Instant::now());
+        Ok(serde_json::json!({ "transcript": transcript, "receipt": receipt }))
+    }
 }
 
 /// Hand-rolled RFC3339 UTC timestamp (seconds precision) from `SystemTime`,
@@ -449,9 +637,18 @@ impl Driver for TmuxDriver {
                 }
                 Ok(serde_json::json!({ "sent": keys.len() }))
             }
-            "await_idle" | "ask" => {
-                Err(DriverError::new(ErrorKind::Invalid, "not yet implemented"))
+            "await_idle" => {
+                let quiet_ms = args
+                    .get("quiet_ms")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(1500);
+                let timeout_ms = args
+                    .get("timeout_ms")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(60_000);
+                self.op_await_idle(&pane, quiet_ms, timeout_ms).await
             }
+            "ask" => self.op_ask(addr, &pane, &args).await,
             other => Err(
                 DriverError::new(ErrorKind::NotFound, format!("no op '{other}'"))
                     .with_hint("run channel_describe(\"tmux:*\")"),
