@@ -62,36 +62,60 @@ impl Framing {
         self.waiters.push_back(token);
     }
 
-    /// Advances the state machine by one parsed line, returning zero or more
-    /// actions for the transport layer to execute.
-    pub fn feed(&mut self, line: CmLine) -> Vec<FramingOut> {
-        match line {
-            CmLine::Output { pane, data } => vec![FramingOut::Event { pane, data }],
-            CmLine::Pause { pane } => vec![FramingOut::Pause { pane }],
-            CmLine::Exit => vec![FramingOut::Exited],
-            CmLine::Begin { .. } => {
-                self.in_block = true;
-                self.body.clear();
-                vec![]
-            }
-            CmLine::Body(s) => {
-                if self.in_block {
-                    self.body.push(s);
+    /// Advances the state machine by one raw control-mode line, returning zero
+    /// or more actions for the transport layer to execute.
+    ///
+    /// Classification is BLOCK-STATE-AWARE, not by bare `%` prefix — this is the
+    /// crux of framing command output correctly. A command's body lines are its
+    /// literal output and can legitimately begin with `%` (e.g.
+    /// `list-panes -F '#{pane_id}|...'` emits `%3|...` because pane IDs are
+    /// `%N`), so a context-free per-line classifier would wrongly treat them as
+    /// notifications and drop them. Hence:
+    ///
+    /// * INSIDE a block, the ONLY control lines are the terminators `%end` /
+    ///   `%error`; EVERY other line — `%`-prefixed or not — is captured verbatim
+    ///   as body.
+    /// * OUTSIDE a block, the line is fully classified via [`parse_line`]:
+    ///   `%begin` opens a block, `%output` is a pane event, `%pause` / `%exit`
+    ///   map to their actions, and any other `%…` notification is ignored.
+    pub fn feed(&mut self, raw: &str) -> Vec<FramingOut> {
+        if self.in_block {
+            match parse_line(raw) {
+                CmLine::End { .. } => self.finish_block(true),
+                CmLine::CmdError { .. } => self.finish_block(false),
+                // Any non-terminator line is literal command output, even one
+                // starting with `%` — capture it verbatim.
+                _ => {
+                    self.body.push(raw.to_string());
+                    vec![]
                 }
-                vec![]
             }
-            CmLine::End { .. } | CmLine::CmdError { .. } if self.in_block => {
-                self.in_block = false;
-                let ok = matches!(&line, CmLine::End { .. });
-                let body = std::mem::take(&mut self.body).join("\n");
-                match self.waiters.pop_front() {
-                    // Matched to an in-flight command.
-                    Some(_token) => vec![FramingOut::Reply { ok, body }],
-                    // Unsolicited block (attach greeting / stray reply): discard.
-                    None => vec![],
+        } else {
+            match parse_line(raw) {
+                CmLine::Output { pane, data } => vec![FramingOut::Event { pane, data }],
+                CmLine::Pause { pane } => vec![FramingOut::Pause { pane }],
+                CmLine::Exit => vec![FramingOut::Exited],
+                CmLine::Begin { .. } => {
+                    self.in_block = true;
+                    self.body.clear();
+                    vec![]
                 }
+                // A `%end`/`%error` with no open block, notifications, and stray
+                // body lines outside a block all carry no action.
+                _ => vec![],
             }
-            _ => vec![],
+        }
+    }
+
+    /// Closes the current reply block, emitting the accumulated body as a
+    /// [`FramingOut::Reply`] iff a waiter was queued; an unsolicited block (the
+    /// attach greeting or a stray reply) is discarded.
+    fn finish_block(&mut self, ok: bool) -> Vec<FramingOut> {
+        self.in_block = false;
+        let body = std::mem::take(&mut self.body).join("\n");
+        match self.waiters.pop_front() {
+            Some(_token) => vec![FramingOut::Reply { ok, body }],
+            None => vec![],
         }
     }
 }
@@ -209,7 +233,7 @@ impl ControlMode {
         let mut pause_lines: Vec<String> = Vec::new();
         {
             let mut st = self.state.lock().await;
-            for out in st.framing.feed(parse_line(raw)) {
+            for out in st.framing.feed(raw) {
                 match out {
                     FramingOut::Event { pane, data } => {
                         let _ = self.events_tx.send(PaneEvent { pane, data });
@@ -298,10 +322,9 @@ impl TmuxTransport for ControlMode {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::drivers::tmux::protocol::parse_line;
 
     fn feed_all(f: &mut Framing, lines: &[&str]) -> Vec<FramingOut> {
-        lines.iter().flat_map(|l| f.feed(parse_line(l))).collect()
+        lines.iter().flat_map(|l| f.feed(l)).collect()
     }
 
     #[test]
@@ -332,5 +355,29 @@ mod tests {
         );
         assert!(matches!(out[0], FramingOut::Event { .. }));
         assert!(matches!(out[1], FramingOut::Reply { ok: false, .. }));
+    }
+
+    #[test]
+    fn in_block_percent_prefixed_body_line_is_captured() {
+        // A command's literal output can legitimately begin with `%` — e.g.
+        // `list-panes -F '#{pane_id}|...'` emits `%3|...` because pane IDs are
+        // `%N`. While inside a `%begin`…`%end` block, such a line is body, not a
+        // notification, and must survive verbatim into the reply.
+        let mut f = Framing::new();
+        f.push_waiter(1);
+        let out = feed_all(
+            &mut f,
+            &[
+                "%begin 1721600000 1 1",
+                "%3|main:0.1|node|codex|/home/t/proj",
+                "%end 1721600000 1 1",
+            ],
+        );
+        match &out[..] {
+            [FramingOut::Reply { ok: true, body }] => {
+                assert_eq!(body, "%3|main:0.1|node|codex|/home/t/proj");
+            }
+            other => panic!("expected single ok reply with intact body, got: {other:?}"),
+        }
     }
 }
