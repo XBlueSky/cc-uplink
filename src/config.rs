@@ -12,6 +12,8 @@ pub struct Config {
 pub struct DriversCfg {
     #[serde(default)]
     pub tmux: TmuxCfg,
+    #[serde(default, rename = "image-openai")]
+    pub image_openai: ImageOpenAiCfg,
 }
 
 #[derive(Debug, Deserialize)]
@@ -31,8 +33,41 @@ impl Default for TmuxCfg {
     }
 }
 
+#[derive(Debug, Clone, Deserialize)]
+pub struct ImageOpenAiCfg {
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    #[serde(default = "default_key_env")]
+    pub api_key_env: String,
+    #[serde(default = "default_openai_model")]
+    pub model: String,
+    #[serde(default = "default_openai_base")]
+    pub base_url: String,
+}
+
+impl Default for ImageOpenAiCfg {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            api_key_env: default_key_env(),
+            model: default_openai_model(),
+            base_url: default_openai_base(),
+        }
+    }
+}
+
 fn default_true() -> bool {
     true
+}
+
+fn default_key_env() -> String {
+    "OPENAI_API_KEY".into()
+}
+fn default_openai_model() -> String {
+    "gpt-image-1".into()
+}
+fn default_openai_base() -> String {
+    "https://api.openai.com/v1".into()
 }
 
 impl Config {
@@ -84,5 +119,26 @@ mod tests {
             Config::from_str("not [ toml").unwrap_err().kind,
             crate::error::ErrorKind::Invalid
         ));
+    }
+
+    #[test]
+    fn image_openai_defaults() {
+        let c = Config::from_str("").unwrap();
+        assert!(c.drivers.image_openai.enabled);
+        assert_eq!(c.drivers.image_openai.api_key_env, "OPENAI_API_KEY");
+        assert_eq!(c.drivers.image_openai.model, "gpt-image-1");
+        assert_eq!(c.drivers.image_openai.base_url, "https://api.openai.com/v1");
+    }
+
+    #[test]
+    fn image_openai_section_parses_with_dash_name() {
+        let c = Config::from_str(
+            "[drivers.image-openai]\nenabled = false\napi_key_env = \"MY_KEY\"\nmodel = \"gpt-image-1-mini\"\nbase_url = \"http://127.0.0.1:8080/v1\"\n",
+        )
+        .unwrap();
+        assert!(!c.drivers.image_openai.enabled);
+        assert_eq!(c.drivers.image_openai.api_key_env, "MY_KEY");
+        assert_eq!(c.drivers.image_openai.model, "gpt-image-1-mini");
+        assert_eq!(c.drivers.image_openai.base_url, "http://127.0.0.1:8080/v1");
     }
 }
