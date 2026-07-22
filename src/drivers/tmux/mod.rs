@@ -2,7 +2,9 @@ pub mod control;
 pub mod protocol;
 pub mod transport;
 
+use std::collections::VecDeque;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
 use async_trait::async_trait;
@@ -37,6 +39,40 @@ pub struct TmuxDriver {
     cm: Mutex<Option<Arc<ControlMode>>>,
     pub own: OwnCtx,
     read_marks: Mutex<std::collections::HashMap<String, std::time::Instant>>,
+    inbox: Mutex<VecDeque<RecvItem>>,
+    next_cursor: AtomicU64,
+    sink: crate::core::logsink::LogSink,
+}
+
+/// Line-buffers ANSI-stripped inbound bytes, emitting only complete
+/// (`\n`/`\r`-terminated) non-empty lines. Pure — no I/O, unit-tested below.
+pub struct LineBuffer {
+    buf: String,
+}
+
+impl Default for LineBuffer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl LineBuffer {
+    pub fn new() -> Self {
+        Self { buf: String::new() }
+    }
+
+    pub fn push(&mut self, data: &[u8]) -> Vec<String> {
+        self.buf.push_str(&protocol::strip_ansi(data));
+        let mut out = vec![];
+        while let Some(i) = self.buf.find(['\n', '\r']) {
+            let line: String = self.buf.drain(..=i).collect();
+            let line = line.trim_end_matches(['\n', '\r']).to_string();
+            if !line.is_empty() {
+                out.push(line);
+            }
+        }
+        out
+    }
 }
 
 /// Pure guard check: is `mark` present and younger than `ttl`?
@@ -57,6 +93,9 @@ impl TmuxDriver {
             cm: Mutex::new(cm),
             own,
             read_marks: Mutex::new(std::collections::HashMap::new()),
+            inbox: Mutex::new(VecDeque::new()),
+            next_cursor: AtomicU64::new(0),
+            sink: crate::core::logsink::LogSink::open(),
         });
         // best-effort defaults
         let _ = d
@@ -75,6 +114,57 @@ impl TmuxDriver {
                 "on".into(),
             ])
             .await;
+
+        // Inbound-envelope watcher: line-buffers own-pane %output and feeds
+        // complete lines to `parse_inbound`, appending hits to the in-memory
+        // ring buffer (drained by `recv`) and the JSONL conversation log.
+        //
+        // Holds only a Weak ref (mirroring `ControlMode::attach`'s reader
+        // task): a strong clone here would create a reference cycle — this
+        // driver owns the `ControlMode` whose broadcast sender keeps `rx`
+        // alive, so a strong-held task would never observe channel closure
+        // and the driver (and its child `tmux -C` process) could never be
+        // dropped even once every external `Arc<TmuxDriver>` is released.
+        if let Some(mut rx) = d.events().await {
+            let weak = Arc::downgrade(&d);
+            let own_pane = d.own.pane.clone();
+            tokio::spawn(async move {
+                let mut lb = LineBuffer::new();
+                loop {
+                    match rx.recv().await {
+                        Ok(ev) if ev.pane == own_pane => {
+                            let Some(dd) = weak.upgrade() else {
+                                break;
+                            };
+                            for line in lb.push(&ev.data) {
+                                if let Some(inb) = crate::core::envelope::parse_inbound(&line) {
+                                    let cursor = dd.next_cursor.fetch_add(1, Ordering::SeqCst);
+                                    let item = RecvItem {
+                                        cursor,
+                                        at: now_rfc3339(),
+                                        from: inb.from.clone(),
+                                        id: inb.id.clone(),
+                                        raw: line.clone(),
+                                    };
+                                    dd.sink.append(&serde_json::json!({
+                                        "ts": item.at, "dir": "in", "from": item.from,
+                                        "id": item.id, "raw": item.raw
+                                    }));
+                                    let mut q = dd.inbox.lock().await;
+                                    if q.len() >= 1000 {
+                                        q.pop_front();
+                                    }
+                                    q.push_back(item);
+                                }
+                            }
+                        }
+                        Ok(_) => {}
+                        Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
+                        Err(_) => break,
+                    }
+                }
+            });
+        }
         Ok(d)
     }
 
@@ -545,12 +635,20 @@ impl Driver for TmuxDriver {
                     "Enter".into(),
                 ])
                 .await?;
-                Ok(SendReceipt {
+                let receipt = SendReceipt {
                     delivered: true,
                     correlation_id: id,
                     verify_excerpt: Some(excerpt),
                     injected_at: now_rfc3339(),
-                })
+                };
+                self.sink.append(&serde_json::json!({
+                    "ts": receipt.injected_at,
+                    "dir": "out",
+                    "channel": format!("tmux:{addr}"),
+                    "id": receipt.correlation_id,
+                    "excerpt": &msg.message,
+                }));
+                Ok(receipt)
             }
             None => {
                 let cap = self
@@ -656,11 +754,12 @@ impl Driver for TmuxDriver {
         }
     }
 
-    async fn recv(&self, _cursor: Option<u64>) -> Result<RecvBatch, DriverError> {
-        Ok(RecvBatch {
-            items: vec![],
-            next_cursor: 0,
-        })
+    async fn recv(&self, cursor: Option<u64>) -> Result<RecvBatch, DriverError> {
+        let q = self.inbox.lock().await;
+        let from = cursor.unwrap_or(0);
+        let items: Vec<RecvItem> = q.iter().filter(|i| i.cursor >= from).cloned().collect();
+        let next_cursor = items.last().map(|i| i.cursor + 1).unwrap_or(from);
+        Ok(RecvBatch { items, next_cursor })
     }
 
     async fn doctor(&self) -> DoctorReport {
@@ -716,6 +815,22 @@ mod guard_tests {
             Duration::from_secs(60)
         ));
         assert!(!guard_ok(None, Duration::from_secs(60)));
+    }
+}
+
+#[cfg(test)]
+mod recv_tests {
+    use super::*;
+
+    #[test]
+    fn line_buffer_emits_complete_lines_only() {
+        let mut lb = LineBuffer::new();
+        assert!(lb.push(b"[reply id:ab12cd34] par").is_empty());
+        let lines = lb.push(b"tial answer\nnext");
+        assert_eq!(
+            lines,
+            vec!["[reply id:ab12cd34] partial answer".to_string()]
+        );
     }
 }
 

@@ -245,3 +245,46 @@ async fn ask_returns_transcript_delta() {
     );
     assert!(out["receipt"]["delivered"].as_bool().unwrap());
 }
+
+#[tokio::test]
+async fn recv_sees_inbound_reply_envelope() {
+    let Some(srv) = common::TmuxTestServer::start() else {
+        return;
+    };
+    let own = srv
+        .run(&["list-panes", "-t", "it", "-F", "#{pane_id}"])
+        .trim()
+        .to_string();
+    // Replace whatever interactive shell the test runner's default session
+    // command is (its prompt may emit shell-decoration escapes, e.g. the
+    // screen/tmux window-title sequence `ESC k <cmd> ESC \`) with a plain
+    // `sh`, so the pane's output is the deterministic, undecorated text this
+    // test asserts on.
+    srv.run(&["respawn-pane", "-k", "-t", &own, "sh"]);
+    unsafe {
+        std::env::set_var("TMUX", format!("{},0,0", srv.sock()));
+        std::env::set_var("TMUX_PANE", &own);
+    }
+    let d = cc_uplink::drivers::tmux::TmuxDriver::new(Default::default())
+        .await
+        .unwrap();
+    // peer-style reply: typed into our pane, then Enter → shell echoes the line into pane output
+    srv.run(&[
+        "send-keys",
+        "-t",
+        &own,
+        "-l",
+        "echo '[reply id:cafe0001] done'",
+    ]);
+    srv.run(&["send-keys", "-t", &own, "Enter"]);
+    tokio::time::sleep(std::time::Duration::from_millis(800)).await;
+    let batch = cc_uplink::core::driver::Driver::recv(&*d, None)
+        .await
+        .unwrap();
+    assert!(
+        batch
+            .items
+            .iter()
+            .any(|i| i.id.as_deref() == Some("cafe0001"))
+    );
+}

@@ -127,6 +127,19 @@ pub fn strip_ansi(data: &[u8]) -> String {
                 i += 1;
                 continue;
             }
+            // `ESC k <text> ESC \` — the screen/tmux "set window title" escape,
+            // commonly emitted by shell prompt hooks that name the window
+            // after the running command. Like OSC above, its payload must be
+            // consumed through to the ST terminator, not just its 2-byte
+            // introducer, or the payload text leaks into the stripped output.
+            if i + 1 < data.len() && data[i + 1] == b'k' {
+                i += 2;
+                while i < data.len() && !(data[i] == 0x1b && data.get(i + 1) == Some(&b'\\')) {
+                    i += 1;
+                }
+                i += 2; // ESC \
+                continue;
+            }
             i += 2; // other short escape
             continue;
         }
@@ -188,6 +201,16 @@ mod tests {
     fn strips_ansi() {
         let s = strip_ansi(b"\x1b[1;32mgreen\x1b[0m id:ab12cd34 \x1b]0;title\x07tail");
         assert_eq!(s, "green id:ab12cd34 tail");
+    }
+
+    #[test]
+    fn strips_screen_title_escape() {
+        // `ESC k <text> ESC \` sets the screen/tmux window title (e.g. emitted
+        // by shell prompt hooks that name the window after the running
+        // command). It must be dropped whole — including its payload — not
+        // just its 2-byte introducer, or the payload text leaks into output.
+        let s = strip_ansi(b"before \x1bkecho\x1b\\[reply id:cafe0001] done");
+        assert_eq!(s, "before [reply id:cafe0001] done");
     }
 
     #[test]
