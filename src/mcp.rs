@@ -231,10 +231,12 @@ impl ServerHandler for Uplink {
     }
 }
 
-/// Build the driver registry from config, registering `TmuxDriver` when
-/// enabled and constructible. A construction failure is logged to stderr and
-/// skipped rather than crashing the server — the missing driver simply won't
-/// appear in `channel_list`/`channel_doctor`.
+/// Build the driver registry from config, registering the tmux driver and
+/// the image driver per config. `TmuxDriver` construction failures are
+/// logged to stderr and skipped rather than crashing the server — the
+/// missing driver simply won't appear in `channel_list`/`channel_doctor`.
+/// The image driver is registered only when at least one image backend is
+/// enabled.
 pub async fn build_registry() -> Arc<Registry> {
     let cfg = crate::config::Config::load();
     let mut reg = Registry::new();
@@ -243,6 +245,17 @@ pub async fn build_registry() -> Arc<Registry> {
             Ok(d) => reg.register(d),
             Err(e) => eprintln!("cc-uplink: tmux driver unavailable: {}", e.message),
         }
+    }
+    let mut backends: Vec<Box<dyn crate::drivers::image::ImageBackend>> = Vec::new();
+    if cfg.drivers.image_openai.enabled {
+        backends.push(Box::new(crate::drivers::image::openai::OpenAiBackend::new(
+            cfg.drivers.image_openai,
+        )));
+    }
+    if !backends.is_empty() {
+        reg.register(Arc::new(crate::drivers::image::ImageDriver::from_backends(
+            backends,
+        )));
     }
     Arc::new(reg)
 }
@@ -277,5 +290,39 @@ mod tests {
         assert_eq!(super::driver_of("tmux:main"), "tmux");
         assert_eq!(super::driver_of("nocolon"), "core");
         assert_eq!(super::driver_of(":bare"), "core");
+    }
+
+    use std::sync::Arc;
+
+    use crate::config::ImageOpenAiCfg;
+    use crate::core::registry::Registry;
+    use crate::drivers::image::{ImageBackend, ImageDriver, openai::OpenAiBackend};
+    use crate::error::ErrorKind;
+
+    #[tokio::test]
+    async fn image_driver_routes_via_registry() {
+        let mut reg = Registry::new();
+        let cfg = ImageOpenAiCfg {
+            enabled: true,
+            api_key_env: "CC_UPLINK_T_MCP_NOKEY".into(),
+            model: "gpt-image-1".into(),
+            base_url: "http://127.0.0.1:9".into(),
+        };
+        let backends: Vec<Box<dyn ImageBackend>> = vec![Box::new(OpenAiBackend::new(cfg))];
+        reg.register(Arc::new(ImageDriver::from_backends(backends)));
+        let (d, addr) = reg.driver_for("image:openai").unwrap();
+        assert_eq!(addr, "openai");
+        // no key set → invoke fails Unavailable through the full routing path
+        let e = d
+            .invoke(&addr, "generate", serde_json::json!({"prompt": "x"}))
+            .await
+            .err()
+            .unwrap();
+        assert!(matches!(e.kind, ErrorKind::Unavailable));
+        let list = reg.list_all().await;
+        assert!(
+            list.iter()
+                .any(|(i, cs)| i.id == "image" && cs.iter().any(|c| c.channel == "image:openai"))
+        );
     }
 }
