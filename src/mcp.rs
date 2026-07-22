@@ -47,11 +47,12 @@ pub fn render_result<T: serde::Serialize>(
     }
 }
 
-/// Channel prefix (before `:`), falling back to `"core"` for addresses that
-/// don't carry one (e.g. a bare channel name that failed to parse).
+/// Channel prefix (before the first `:`), falling back to `"core"` when the
+/// address has no colon at all or an empty prefix (e.g. a bare channel name
+/// that failed to parse, or a leading `:`).
 fn driver_of(addr: &str) -> &str {
-    addr.split(':')
-        .next()
+    addr.split_once(':')
+        .map(|(p, _)| p)
         .filter(|s| !s.is_empty())
         .unwrap_or("core")
 }
@@ -269,5 +270,12 @@ mod tests {
         let v = serde_json::json!({"a": 1});
         let s = super::render_result(Ok(v), "tmux").unwrap();
         assert!(s.contains("\"a\": 1"));
+    }
+
+    #[test]
+    fn driver_of_falls_back_to_core_without_prefix() {
+        assert_eq!(super::driver_of("tmux:main"), "tmux");
+        assert_eq!(super::driver_of("nocolon"), "core");
+        assert_eq!(super::driver_of(":bare"), "core");
     }
 }
