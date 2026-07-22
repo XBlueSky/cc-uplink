@@ -370,3 +370,44 @@ codex_bin = "codex"
 - **One-shot CLI tmux transport as primary**: superseded by control-mode-first
   decision (event-driven verify/await/recv); retained as fallback transport
   and test seam.
+
+## 19. Known v1 limitations & tracked follow-ups
+
+Surfaced during implementation review and deliberately deferred. None blocks
+v1 merge; each is on a secondary/audit/cosmetic path.
+
+- **`channel_recv` uses one shared cursor space across drivers.** The MCP layer
+  merges every driver's `recv` into a single `next_cursor = max(...)`. This is
+  correct with one driver (tmux) but **must become per-driver cursors before the
+  v2 mailbox driver ships** — otherwise a second driver with an independent
+  cursor would skip items. Prerequisite for §16 v2.
+- **Transport reconnect is on-demand, not a supervised backoff loop.** Task 8's
+  plan described a background reconnect supervisor (500ms→8s backoff); the
+  implementation instead re-attaches lazily inside `TmuxDriver::run()` (no
+  backoff task). Reasonable simplification; recorded here (and belongs in the
+  wire-contract changelog) because it is the mechanism the recv watcher
+  supervisor now compensates for by re-subscribing across a CM swap.
+- **`%end`/`%error` control-mode terminators are matched by prefix, not by the
+  block's sequence number.** A reply-body line reading exactly `%end <ts> <n>
+  <flags>` could close a block early. The seq is already parsed but unused;
+  matching it against the open `%begin` closes the gap. Low probability.
+- **`op_await_idle` deadline can overshoot** the requested timeout by up to one
+  `quiet_ms` (event path) / 300ms (poll path); bounded, never a hang.
+- **`TmuxDriver::run()` holds the `cm` mutex across the tmux round-trip**,
+  serializing driver commands instance-wide and leaving ControlMode's FIFO
+  multi-waiter machinery single-depth in v1. Latency-only; clone the
+  `Arc<ControlMode>` out and drop the guard before the await to restore
+  concurrency.
+- **CLI renders `driver_for` errors under a fixed `"core"` id** while the MCP
+  layer uses the channel prefix (`driver_of`). Both are safe (neither puts
+  malformed input in the id slot); the inconsistency is cosmetic. Unify by
+  having the CLI reuse `driver_of`.
+- **`recv` watcher keeps one `LineBuffer` across re-subscribes**, so a partial
+  line straddling a CM re-attach may garble/drop exactly one inbound envelope at
+  the seam (then recovers). Reset the buffer on each fresh subscription to tidy.
+- **Minor operability/edges**: `channel_recv` swallows per-driver `recv` errors
+  silently; `log --follow` re-reads the whole file each poll (O(file-size));
+  `read_marks` grows one entry per distinct pane (inbox is bounded at 1000);
+  `LineBuffer` strips ANSI per `%output` chunk so an escape split across two
+  chunks can leak a fragment into a logged envelope; concurrent `LogSink`
+  writers can interleave in the JSONL log.
