@@ -1,0 +1,11 @@
+image: rust:latest
+before_script:
+  - apt-get update -qq && apt-get install -y -qq tmux
+  - rustup component add rustfmt clippy
+stages: [check]
+check:
+  stage: check
+  script:
+    - cargo fmt --check
+    - cargo clippy --release --all-targets -- -D warnings
+    - cargo test
