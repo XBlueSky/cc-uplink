@@ -1,0 +1,13 @@
+{
+  "name": "cc-uplink",
+  "version": "0.1.0",
+  "description": "Claude Code's unified outbound channel layer — six fixed MCP tools to message tmux peer agents (Codex, another Claude) and generate or edit images",
+  "author": {
+    "name": "XBlueSky",
+    "url": "https://github.com/XBlueSky"
+  },
+  "homepage": "https://github.com/XBlueSky/cc-uplink",
+  "repository": "https://github.com/XBlueSky/cc-uplink",
+  "license": "MIT",
+  "keywords": ["mcp", "tmux", "agent-communication", "image-generation", "codex", "outbound-channels"]
+}

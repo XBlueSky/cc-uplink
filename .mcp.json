@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "cc-uplink": {
+      "command": "${CLAUDE_PLUGIN_ROOT}/scripts/launcher.sh",
+      "args": ["serve"]
+    }
+  }
+}

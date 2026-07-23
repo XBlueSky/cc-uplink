@@ -1,0 +1,7 @@
+# Marketplace-level presentation data owned by cc-marketspec.
+# Native metadata (name/owner) remains in .claude-plugin/marketplace.json.
+schemaVersion: "1.1"
+lang: en
+# Optional coverage severity overrides use <component>.<field> or "*".
+# coverage:
+#   skill.trigger: warn

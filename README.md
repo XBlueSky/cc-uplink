@@ -31,6 +31,31 @@ matter how many ways Claude can reach the outside world.
 
 ## Install
 
+### Claude Code plugin (recommended)
+
+```
+/plugin marketplace add XBlueSky/cc-uplink
+/plugin install cc-uplink@cc-uplink
+```
+
+The plugin ships the `uplink` skill and registers the MCP server. On first
+connection `scripts/launcher.sh` downloads the release binary pinned in
+`.claude-plugin/server-version` for your platform (static musl Linux or
+macOS, x86_64/aarch64), verifies its sha256, and caches it in the plugin
+data dir — the skill and the binary it describes can never version-skew.
+Set `CC_UPLINK_BIN=/path/to/local/build` to bypass pinning during
+development.
+
+Migrating from `cc-uplink setup`? Remove the old user-scope copies so tools
+and skills aren't listed twice:
+
+```bash
+claude mcp remove -s user cc-uplink
+rm -rf ~/.claude/skills/uplink   # the plugin ships its own copy
+```
+
+### Manual (any other MCP client, or no plugins)
+
 Prebuilt binaries are on the
 [Releases page](https://github.com/XBlueSky/cc-uplink/releases) — Linux
 builds are fully static musl (x86_64/aarch64, any distro with kernel ≥ 3.2),
@@ -110,6 +135,17 @@ Driver wire contract: `docs/wire-contract.md`.
 Downstream contracts (OpenAI API, Codex CLI): `docs/downstream-contracts.md`.
 
 ## Releasing
+
+Three version fields move together in one release commit:
+
+1. `Cargo.toml` `version`
+2. `.claude-plugin/plugin.json` `version` (plugin cache/display axis)
+3. `.claude-plugin/server-version` (the binary the plugin launcher pins)
+
+```bash
+git commit -am "chore: release vX.Y.Z"
+git tag vX.Y.Z && git push && git push --tags
+```
 
 Push a `v*` tag → `.github/workflows/release.yml` builds static musl Linux
 (x86_64/aarch64) + macOS (x86_64/aarch64) tarballs with sha256 checksums and

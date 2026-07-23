@@ -1,0 +1,61 @@
+# Marketplace presentation overlay for cc-uplink. Every field is optional.
+# yaml-language-server: $schema=../../node_modules/@xbluesky/cc-marketspec/schemas/entry.schema.json
+# Groups are declared in .cc-marketspec/catalog.yaml.
+# Field guide: marketplace-flow/references/entry-authoring.md or the hosted MCP.
+
+tagline: Talk to tmux peer agents and generate images — six fixed tools, zero tool-budget creep
+intro: >
+  One Rust binary gives Claude Code a single outbound layer: message whatever
+  runs in another tmux pane (Codex CLI, another Claude, a shell) and generate
+  or edit images, all through six fixed MCP tools. Drivers plug in underneath,
+  so new channels never inflate your tool listing.
+
+skills:
+  - name: uplink
+    trigger: When Claude should message another agent in a tmux pane (ask
+      Codex, talk to a peer) or generate/edit images through cc-uplink's
+      channel tools.
+    examples:
+      - "ask codex in the other pane to review my diff"
+      - "generate a watercolor lighthouse image"
+      - "把這個問題丟給隔壁 pane 的 codex"
+
+mcp:
+  - name: cc-uplink
+    description: Stdio MCP server (one static Rust binary) exposing the six
+      fixed channel tools; tmux and image drivers plug in underneath without
+      ever adding a tool.
+    provides:
+      - channel_list
+      - channel_describe
+      - channel_send
+      - channel_invoke
+      - channel_recv
+      - channel_doctor
+    install: false
+    auth: none
+    setup:
+      - text: Nothing to install — on first connection the plugin launcher
+          downloads the release binary pinned in .claude-plugin/server-version
+          for your platform and verifies its sha256.
+      - text: For image:openai, export OPENAI_API_KEY in the environment
+          Claude Code runs in (tmux and image:codex need no key).
+      - text: For image:codex, log the Codex CLI in once.
+        cmd: codex login
+    repo: https://github.com/XBlueSky/cc-uplink
+
+tips:
+  - Label panes once (channel_invoke tmux:%N label) and address them as
+    tmux:codex — labels survive pane reshuffles, raw %ids don't.
+  - No OpenAI API key? image:codex reuses Codex CLI's built-in imagegen
+    through your ChatGPT login — no key needed.
+  - Set CC_UPLINK_BIN=/path/to/local/build to develop against the plugin
+    without touching the version pin.
+traps:
+  - Don't poll channel_recv for replies — a peer's reply arrives in your own
+    pane as a "[reply id:…]" line; recv is an audit/recovery log only.
+  - Migrating from `cc-uplink setup`? Run `claude mcp remove -s user
+    cc-uplink` and delete ~/.claude/skills/uplink, or tools and skill both
+    list twice.
+  - channel_send to image:* is rejected by design — image channels are
+    invoke-only (generate/edit via channel_invoke).
