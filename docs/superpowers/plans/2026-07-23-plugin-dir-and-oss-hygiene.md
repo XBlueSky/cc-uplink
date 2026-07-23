@@ -34,7 +34,7 @@
 - Consumes: nothing from earlier tasks.
 - Produces: plugin root at `plugins/cc-uplink/` — Task 2 does not depend on it, but future release commits bump `plugins/cc-uplink/.claude-plugin/plugin.json` and `plugins/cc-uplink/.claude-plugin/server-version`.
 
-- [ ] **Step 1: git mv everything plugin-scoped**
+- [x] **Step 1: git mv everything plugin-scoped**
 
 ```bash
 mkdir -p plugins/cc-uplink/.claude-plugin plugins/cc-uplink/scripts
@@ -47,7 +47,7 @@ git mv skills                          plugins/cc-uplink/skills
 
 Expected: `git status` shows renames only; root `scripts/` disappears (was launcher-only); root `.claude-plugin/` keeps only `marketplace.json`.
 
-- [ ] **Step 2: Repoint marketplace source**
+- [x] **Step 2: Repoint marketplace source**
 
 In `.claude-plugin/marketplace.json` change:
 
@@ -61,7 +61,7 @@ to:
     { "name": "cc-uplink", "source": "./plugins/cc-uplink" }
 ```
 
-- [ ] **Step 3: Follow the move in `src/cli/mod.rs`**
+- [x] **Step 3: Follow the move in `src/cli/mod.rs`**
 
 ```rust
 pub(crate) const SKILL_MD: &str =
@@ -70,7 +70,7 @@ pub(crate) const SKILL_MD: &str =
 
 (The skill-install tests in the same file write to `<claude_home>/skills/uplink/` — an install destination, not a repo path — and stay untouched.)
 
-- [ ] **Step 4: Update README Releasing paths**
+- [x] **Step 4: Update README Releasing paths**
 
 Lines 142–143, add the `plugins/cc-uplink/` prefix:
 
@@ -81,7 +81,7 @@ Lines 142–143, add the `plugins/cc-uplink/` prefix:
 
 (README line 43's `.claude-plugin/server-version` and line 42's `scripts/launcher.sh` are plugin-root-relative — leave them.)
 
-- [ ] **Step 5: Verify build + tests**
+- [x] **Step 5: Verify build + tests**
 
 Run: `cargo test`
 Expected: all pass (a wrong include_str path fails at compile time).
@@ -89,13 +89,13 @@ Expected: all pass (a wrong include_str path fails at compile time).
 Run: `cargo fmt --check && cargo clippy --release --all-targets`
 Expected: clean.
 
-- [ ] **Step 6: Validate marketplace + plugin structure**
+- [x] **Step 6: Validate marketplace + plugin structure**
 
 Invoke the `cc-marketspec:cc-check` skill; expected: validation passes with the new `source`. If it asks for regeneration, run `cc-marketspec:cc-generate`.
 
 Dispatch the `plugin-dev:plugin-validator` agent on `plugins/cc-uplink/`; expected: no structural errors (plugin.json valid, .mcp.json uses `${CLAUDE_PLUGIN_ROOT}`, skill frontmatter valid).
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add -A
@@ -120,19 +120,19 @@ git commit -m "refactor(plugin): move plugin into plugins/cc-uplink/"
 - Consumes: `plugins/cc-uplink/` layout from Task 1 (CONTRIBUTING references it).
 - Produces: nothing downstream.
 
-- [ ] **Step 1: Write `CONTRIBUTING.md`**
+- [x] **Step 1: Write `CONTRIBUTING.md`**
 
 Content: intro; dev setup (toolchain pinned by `rust-toolchain.toml`, tmux ≥ 3.2 needed for integration tests); commands `cargo test`, `cargo fmt --check`, `cargo clippy --release --all-targets`; plugin layout note (`plugins/cc-uplink/`, `CC_UPLINK_BIN` dev override); conventional-commit style matching repo history (`feat:`, `fix:`, `docs:`, `ci:`, `chore:`); PR expectations (tests for behavior changes, docs for user-facing changes); pointer to README Releasing section and the three version fields that move together.
 
-- [ ] **Step 2: Write `CODE_OF_CONDUCT.md`**
+- [x] **Step 2: Write `CODE_OF_CONDUCT.md`**
 
 Contributor Covenant v2.1 standard text; enforcement contact = report privately to the maintainer via GitHub (no email).
 
-- [ ] **Step 3: Write `SECURITY.md`**
+- [x] **Step 3: Write `SECURITY.md`**
 
 Supported version = latest release. Report via GitHub Private Vulnerability Reporting (Security tab → "Report a vulnerability", i.e. `https://github.com/XBlueSky/cc-uplink/security/advisories/new`); never open public issues for exploitable bugs; link README's Security-posture section for the threat model.
 
-- [ ] **Step 4: Write issue forms**
+- [x] **Step 4: Write issue forms**
 
 `bug_report.yml` (YAML form, label `bug`): what happened / expected / repro steps (textareas), platform input (OS + arch), install-method dropdown (plugin / prebuilt binary / built from source), `cc-uplink doctor` output textarea (optional).
 
@@ -148,11 +148,11 @@ contact_links:
     about: Please report exploitable bugs privately — see SECURITY.md.
 ```
 
-- [ ] **Step 5: Write `.github/PULL_REQUEST_TEMPLATE.md`**
+- [x] **Step 5: Write `.github/PULL_REQUEST_TEMPLATE.md`**
 
 Sections: Summary; How verified (checkboxes for `cargo test`, `cargo fmt --check && cargo clippy --release --all-targets`); Checklist (docs updated if user-facing, no secrets/keys in code or fixtures).
 
-- [ ] **Step 6: README badges + Contributing section**
+- [x] **Step 6: README badges + Contributing section**
 
 Immediately under the `# cc-uplink` H1:
 
@@ -172,7 +172,7 @@ setup, test commands, and PR expectations. Report security issues
 privately per [SECURITY.md](SECURITY.md).
 ```
 
-- [ ] **Step 7: Sanity-check YAML + commit**
+- [x] **Step 7: Sanity-check YAML + commit**
 
 Run: `python3 -c "import yaml,glob; [yaml.safe_load(open(f)) for f in glob.glob('.github/ISSUE_TEMPLATE/*.yml')]"`
 Expected: no output (all forms parse).
