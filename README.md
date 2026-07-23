@@ -50,14 +50,6 @@ data dir — the skill and the binary it describes can never version-skew.
 Set `CC_UPLINK_BIN=/path/to/local/build` to bypass pinning during
 development.
 
-Migrating from `cc-uplink setup`? Remove the old user-scope copies so tools
-and skills aren't listed twice:
-
-```bash
-claude mcp remove -s user cc-uplink
-rm -rf ~/.claude/skills/uplink   # the plugin ships its own copy
-```
-
 ### Manual (any other MCP client, or no plugins)
 
 Prebuilt binaries are on the
@@ -67,21 +59,20 @@ plus macOS (x86_64/aarch64):
 
 ```bash
 curl -fsSL https://github.com/XBlueSky/cc-uplink/releases/latest/download/cc-uplink-x86_64-unknown-linux-musl.tar.gz | tar xz
-./cc-uplink setup   # installs companion skill + `claude mcp add`
+claude mcp add -s user cc-uplink -- "$PWD/cc-uplink" serve
 ```
 
 Or build from source:
 
 ```bash
 cargo build --release
-./target/release/cc-uplink setup
+claude mcp add -s user cc-uplink -- "$PWD/target/release/cc-uplink" serve
 ```
 
-Or register manually:
-
-```bash
-claude mcp add -s user cc-uplink -- /path/to/cc-uplink serve
-```
+(For a non-Claude MCP client, point it at `cc-uplink serve` however it
+registers stdio servers.) The manual path registers the tools only; to get
+the `uplink` skill without the plugin, copy
+`plugins/cc-uplink/skills/uplink/SKILL.md` to `~/.claude/skills/uplink/`.
 
 Requirements: tmux ≥ 3.2 for the full tmux feature set (3.5a is the reference
 environment; a one-shot CLI fallback covers older tmux), `OPENAI_API_KEY` for
@@ -115,7 +106,6 @@ cc-uplink doctor                       # diagnostics, CI-friendly exit code
 cc-uplink send tmux:codex "hello"      # full mechanized send cycle
 cc-uplink invoke image:openai generate '{"prompt":"a lighthouse"}'
 cc-uplink log --follow                 # correlation-id-threaded conversation log
-cc-uplink setup                        # register MCP server + install skill
 ```
 
 ## Security posture

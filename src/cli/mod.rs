@@ -7,60 +7,6 @@
 
 use crate::core::driver::{ReplyHint, SendRequest};
 
-pub(crate) const SKILL_MD: &str =
-    include_str!("../../plugins/cc-uplink/skills/uplink/SKILL.md");
-
-/// argv (after the binary) for `claude mcp add …` — kept as data so tests
-/// pin the exact registration command.
-pub(crate) fn mcp_add_args(exe: &str) -> Vec<String> {
-    ["mcp", "add", "-s", "user", "cc-uplink", "--", exe, "serve"]
-        .iter()
-        .map(|s| s.to_string())
-        .collect()
-}
-
-/// Install the embedded companion skill under `<claude_home>/skills/uplink/`.
-/// Overwrites an existing copy (reinstall = upgrade).
-pub(crate) fn install_skill(claude_home: &std::path::Path) -> std::io::Result<std::path::PathBuf> {
-    let dir = claude_home.join("skills").join("uplink");
-    std::fs::create_dir_all(&dir)?;
-    let p = dir.join("SKILL.md");
-    std::fs::write(&p, SKILL_MD)?;
-    Ok(p)
-}
-
-/// `cc-uplink setup`: install the skill, then register the MCP server via
-/// the `claude` CLI. Skill first — it must survive a missing `claude`.
-pub(crate) async fn run_setup(
-    claude_bin: &str,
-    claude_home: &std::path::Path,
-) -> anyhow::Result<()> {
-    let skill = install_skill(claude_home)?;
-    println!("installed skill: {}", skill.display());
-    let exe = std::env::current_exe()?;
-    let args = mcp_add_args(&exe.display().to_string());
-    let st = tokio::process::Command::new(claude_bin)
-        .args(&args)
-        .stdin(std::process::Stdio::null())
-        .status()
-        .await;
-    match st {
-        Ok(s) if s.success() => {
-            println!("registered MCP server: {claude_bin} {}", args.join(" "));
-            println!("restart Claude Code to load the cc-uplink tools");
-            Ok(())
-        }
-        Ok(s) => anyhow::bail!(
-            "'{claude_bin} {}' exited with {s} — run manually to see why",
-            args.join(" ")
-        ),
-        Err(e) => anyhow::bail!(
-            "cannot run '{claude_bin}': {e}\nrun manually: claude {}",
-            args.join(" ")
-        ),
-    }
-}
-
 /// Format a single JSONL log record (as produced by `core::logsink::LogSink`)
 /// into the fixed-width text line `cc-uplink log` prints. Pure and
 /// side-effect free so it's unit-testable without a log file on disk.
@@ -173,16 +119,8 @@ pub async fn run(cmd: &str, rest: &[String]) -> anyhow::Result<()> {
             }
             Ok(())
         }
-        "setup" => {
-            let home = dirs::home_dir()
-                .ok_or_else(|| anyhow::anyhow!("cannot determine home directory"))?
-                .join(".claude");
-            run_setup("claude", &home).await
-        }
         other => {
-            eprintln!(
-                "unknown command '{other}'\nusage: cc-uplink [serve|doctor|send|invoke|log|setup]"
-            );
+            eprintln!("unknown command '{other}'\nusage: cc-uplink [serve|doctor|send|invoke|log]");
             std::process::exit(2);
         }
     }
@@ -203,83 +141,5 @@ mod tests {
         let outl = format_log_line(&serde_json::json!({
             "ts":"T","dir":"out","channel":"tmux:codex","id":"ab12cd34","excerpt":"ping"}));
         assert_eq!(outl, "T  out tmux:codex      ab12cd34 ping");
-    }
-
-    #[test]
-    fn mcp_add_args_golden() {
-        assert_eq!(
-            mcp_add_args("/opt/bin/cc-uplink"),
-            vec![
-                "mcp",
-                "add",
-                "-s",
-                "user",
-                "cc-uplink",
-                "--",
-                "/opt/bin/cc-uplink",
-                "serve"
-            ]
-        );
-    }
-
-    #[test]
-    fn install_skill_writes_uplink_skill() {
-        let tmp = tempfile::tempdir().unwrap();
-        let p = install_skill(tmp.path()).unwrap();
-        assert_eq!(p, tmp.path().join("skills/uplink/SKILL.md"));
-        let body = std::fs::read_to_string(&p).unwrap();
-        assert!(body.starts_with("---"));
-        assert!(body.contains("name: uplink"));
-        assert!(body.contains("channel_describe"));
-    }
-
-    #[tokio::test]
-    async fn run_setup_calls_claude_and_installs_skill() {
-        use std::os::unix::fs::PermissionsExt;
-        let tmp = tempfile::tempdir().unwrap();
-        let argv_file = tmp.path().join("argv.txt");
-        let fake = tmp.path().join("claude");
-        std::fs::write(
-            &fake,
-            format!(
-                "#!/bin/sh\nprintf '%s\\n' \"$@\" > {}\nexit 0\n",
-                argv_file.display()
-            ),
-        )
-        .unwrap();
-        std::fs::set_permissions(&fake, std::fs::Permissions::from_mode(0o755)).unwrap();
-        let home = tmp.path().join("claude-home");
-        run_setup(fake.to_str().unwrap(), &home).await.unwrap();
-        assert!(home.join("skills/uplink/SKILL.md").exists());
-        let argv = std::fs::read_to_string(&argv_file).unwrap();
-        let lines: Vec<&str> = argv.lines().collect();
-        assert_eq!(
-            &lines[..6],
-            &["mcp", "add", "-s", "user", "cc-uplink", "--"]
-        );
-        assert_eq!(lines[7], "serve");
-        assert!(
-            lines[6].ends_with(
-                std::env::current_exe()
-                    .unwrap()
-                    .file_name()
-                    .unwrap()
-                    .to_str()
-                    .unwrap()
-            )
-        );
-    }
-
-    #[tokio::test]
-    async fn run_setup_missing_claude_is_actionable() {
-        let tmp = tempfile::tempdir().unwrap();
-        let home = tmp.path().join("h");
-        let e = run_setup("/nonexistent/cc-uplink-no-claude", &home)
-            .await
-            .err()
-            .unwrap();
-        assert!(e.to_string().contains("run manually"));
-        // skill install happens BEFORE the claude call, so it must exist
-        assert!(home.join("skills/uplink/SKILL.md").exists());
     }
 }

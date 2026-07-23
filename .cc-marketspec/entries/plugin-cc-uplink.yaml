@@ -54,8 +54,5 @@ tips:
 traps:
   - Don't poll channel_recv for replies — a peer's reply arrives in your own
     pane as a "[reply id:…]" line; recv is an audit/recovery log only.
-  - Migrating from `cc-uplink setup`? Run `claude mcp remove -s user
-    cc-uplink` and delete ~/.claude/skills/uplink, or tools and skill both
-    list twice.
   - channel_send to image:* is rejected by design — image channels are
     invoke-only (generate/edit via channel_invoke).
