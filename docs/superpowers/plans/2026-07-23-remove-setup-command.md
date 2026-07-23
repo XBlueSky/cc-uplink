@@ -28,7 +28,7 @@
 - Consumes: nothing.
 - Produces: `src/cli/mod.rs` keeps `format_log_line(&serde_json::Value) -> String` and `pub async fn run(cmd: &str, rest: &[String]) -> anyhow::Result<()>` with arms `doctor|send|invoke|log` only.
 
-- [ ] **Step 1: Delete the setup chain in `src/cli/mod.rs`**
+- [x] **Step 1: Delete the setup chain in `src/cli/mod.rs`**
 
 Delete the contiguous block lines 10–62 — `SKILL_MD` const, `mcp_add_args()`, `install_skill()`, `run_setup()` — so the file goes from the `use` line straight to the `format_log_line` doc comment:
 
@@ -38,7 +38,7 @@ use crate::core::driver::{ReplyHint, SendRequest};
 /// Format a single JSONL log record (as produced by `core::logsink::LogSink`)
 ```
 
-- [ ] **Step 2: Delete the `"setup"` dispatch arm and fix the usage string**
+- [x] **Step 2: Delete the `"setup"` dispatch arm and fix the usage string**
 
 Remove:
 
@@ -60,11 +60,11 @@ Change the unknown-command message to:
         }
 ```
 
-- [ ] **Step 3: Delete the four setup tests**
+- [x] **Step 3: Delete the four setup tests**
 
 Remove the contiguous test block (lines 208–284): `mcp_add_args_golden`, `install_skill_writes_uplink_skill`, `run_setup_calls_claude_and_installs_skill`, `run_setup_missing_claude_is_actionable`. The `tests` module keeps only `formats_in_and_out_lines`.
 
-- [ ] **Step 4: README — delete the migration block**
+- [x] **Step 4: README — delete the migration block**
 
 Delete lines 53–59 entirely:
 
@@ -78,7 +78,7 @@ rm -rf ~/.claude/skills/uplink   # the plugin ships its own copy
 ```
 ```
 
-- [ ] **Step 5: README — rewrite the manual-install steps**
+- [x] **Step 5: README — rewrite the manual-install steps**
 
 Replace lines 68–84 (the three code fences `./cc-uplink setup`, `cargo build … setup`, "Or register manually") with:
 
@@ -101,7 +101,7 @@ the `uplink` skill without the plugin, copy
 `plugins/cc-uplink/skills/uplink/SKILL.md` to `~/.claude/skills/uplink/`.
 ```
 
-- [ ] **Step 6: README — drop the CLI example line**
+- [x] **Step 6: README — drop the CLI example line**
 
 Delete line 118:
 
@@ -109,7 +109,7 @@ Delete line 118:
 cc-uplink setup                        # register MCP server + install skill
 ```
 
-- [ ] **Step 7: Marketspec entry — drop the migration trap**
+- [x] **Step 7: Marketspec entry — drop the migration trap**
 
 In `.cc-marketspec/entries/plugin-cc-uplink.yaml` delete the middle bullet:
 
@@ -119,7 +119,7 @@ In `.cc-marketspec/entries/plugin-cc-uplink.yaml` delete the middle bullet:
     list twice.
 ```
 
-- [ ] **Step 8: Verify no live references**
+- [x] **Step 8: Verify no live references**
 
 Run: `grep -rn "SKILL_MD\|install_skill\|mcp_add_args\|run_setup" src/ tests/`
 Expected: no output.
@@ -127,7 +127,7 @@ Expected: no output.
 Run: `grep -rn "cc-uplink setup" README.md .cc-marketspec/`
 Expected: no output.
 
-- [ ] **Step 9: Full verification gate**
+- [x] **Step 9: Full verification gate**
 
 Run: `cargo test`
 Expected: all pass (remaining cli test: `formats_in_and_out_lines`).
@@ -138,7 +138,7 @@ Expected: clean.
 Run: `npx @xbluesky/cc-marketspec@latest --check`
 Expected: `OK — 1 plugins, 0 warning(s)`.
 
-- [ ] **Step 10: Commit**
+- [x] **Step 10: Commit**
 
 ```bash
 git add src/cli/mod.rs README.md .cc-marketspec/entries/plugin-cc-uplink.yaml
