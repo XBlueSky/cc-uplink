@@ -83,7 +83,12 @@ pub struct SendParams {
 pub struct InvokeParams {
     pub channel: String,
     pub op: String,
-    pub args: Option<serde_json::Value>,
+    /// Op arguments object (see channel_describe for the op's schema).
+    /// Typed as a JSON object rather than `serde_json::Value`: schemars
+    /// renders `Value` as the boolean schema `true`, which Claude Code's
+    /// MCP client rejects ("Invalid input at inputSchema.properties.args"),
+    /// killing the whole tool list.
+    pub args: Option<serde_json::Map<String, serde_json::Value>>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -175,8 +180,14 @@ impl Uplink {
     async fn channel_invoke(&self, Parameters(p): Parameters<InvokeParams>) -> CallToolResult {
         match self.reg.driver_for(&p.channel) {
             Ok((d, addr)) => match render_result(
-                d.invoke(&addr, &p.op, p.args.unwrap_or(serde_json::json!({})))
-                    .await,
+                d.invoke(
+                    &addr,
+                    &p.op,
+                    p.args
+                        .map(serde_json::Value::Object)
+                        .unwrap_or_else(|| serde_json::json!({})),
+                )
+                .await,
                 driver_of(&p.channel),
             ) {
                 Ok(s) => text_ok(s),

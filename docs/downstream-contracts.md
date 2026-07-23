@@ -23,8 +23,12 @@ code that speaks them MUST update this file in the same commit
 
 ## Codex CLI (`src/drivers/image/codex.rs`)
 
-- Spawn: `<codex_bin> exec --full-auto --skip-git-repo-check
+- Spawn: `<codex_bin> exec --sandbox workspace-write --skip-git-repo-check
   [--image <abs>]... "<instruction>"` — argv vector, never a shell.
+  `--sandbox workspace-write` replaces the deprecated `--full-auto`
+  (hidden from `exec --help` since ~0.144.6 but semantically equivalent for
+  non-interactive `exec`; workspace-write is required so imagegen can save
+  the output file into the CWD).
 - stdin MUST be `Stdio::null()`: codex exec blocks reading stdin otherwise
   (documented hang, inherited from codex-image-in-cc).
 - Reference/input images are passed BOTH as `--image <abs>` flags and as
@@ -37,9 +41,13 @@ code that speaks them MUST update this file in the same commit
   else codex prints is ignored — never re-parse LLM prose.
 - Doctor gates: `codex --version` parseable and ≥ 0.142.0;
   `codex login status` exits 0 when logged in; `codex exec --help`
-  advertises `--full-auto` and `--image`.
+  advertises `--sandbox` and `--image`.
 - Timeout: one codex run is capped at 600 s (`Timeout` error beyond that).
 
 ## Changelog
 
+- 2026-07-23: codex spawn/doctor switched from `--full-auto` to
+  `--sandbox workspace-write` — codex-cli 0.144.6 hides `--full-auto` from
+  `exec --help` (still parses as a hidden alias), which false-DEGRADED the
+  doctor gate; found in live smoke testing.
 - 2026-07-22: initial version (M3 openai + M4 codex as shipped).

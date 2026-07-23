@@ -579,7 +579,13 @@ mod tests {
             .unwrap();
         let written = out["paths"][0].as_str().unwrap().to_string();
         let existed = std::path::Path::new(&written).is_file();
-        std::fs::remove_dir_all("./uplink-images").ok(); // cleanup before asserts
+        // Cleanup before asserts — but remove ONLY the file this test wrote:
+        // ./uplink-images in the crate root is a real output directory, and a
+        // blanket remove_dir_all here deletes the user's generated images on
+        // every `cargo test` (observed live). remove_dir keeps the directory
+        // unless this test's file was the only content.
+        std::fs::remove_file(&written).ok();
+        std::fs::remove_dir("./uplink-images").ok();
         assert!(existed, "edit output file must exist: {written}");
         assert!(std::path::Path::new(&written).is_absolute());
         let reqs = server.received_requests().await.unwrap();

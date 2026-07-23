@@ -43,12 +43,17 @@ pub(crate) fn build_edit_instruction(input: &Path, prompt: &str) -> String {
     )
 }
 
-/// Full argv (after the binary) for a codex image run. Contract (spec §7):
-/// `exec --full-auto --skip-git-repo-check [--image <abs>]... <instruction>`.
+/// Full argv (after the binary) for a codex image run. Contract (spec §7,
+/// updated for codex 0.144.6 which hid `--full-auto` from `exec --help`):
+/// `exec --sandbox workspace-write --skip-git-repo-check [--image <abs>]...
+/// <instruction>`. `--sandbox workspace-write` is the documented equivalent
+/// of the deprecated `--full-auto` for non-interactive `exec` (imagegen must
+/// write the output file into the CWD).
 pub(crate) fn exec_args(instruction: &str, images: &[PathBuf]) -> Vec<String> {
     let mut v = vec![
         "exec".to_string(),
-        "--full-auto".to_string(),
+        "--sandbox".to_string(),
+        "workspace-write".to_string(),
         "--skip-git-repo-check".to_string(),
     ];
     for p in images {
@@ -349,12 +354,12 @@ impl ImageBackend for CodexBackend {
             }
         }
         match run_capture(&self.cfg.codex_bin, &["exec", "--help"]).await {
-            Some(h) if h.contains("--full-auto") && h.contains("--image") => {
-                lines.push("exec: --full-auto/--image supported".into());
+            Some(h) if h.contains("--sandbox") && h.contains("--image") => {
+                lines.push("exec: --sandbox/--image supported".into());
             }
             _ => {
                 ok = false;
-                lines.push("exec: --full-auto/--image not confirmed".into());
+                lines.push("exec: --sandbox/--image not confirmed".into());
             }
         }
         (ok, lines)
@@ -392,7 +397,8 @@ mod tests {
             args,
             vec![
                 "exec",
-                "--full-auto",
+                "--sandbox",
+                "workspace-write",
                 "--skip-git-repo-check",
                 "--image",
                 "/a.png",
@@ -475,16 +481,21 @@ mod tests {
         let argv = std::fs::read_to_string(&argv_file).unwrap();
         let lines: Vec<&str> = argv.lines().collect();
         assert_eq!(
-            &lines[..3],
-            &["exec", "--full-auto", "--skip-git-repo-check"]
+            &lines[..4],
+            &[
+                "exec",
+                "--sandbox",
+                "workspace-write",
+                "--skip-git-repo-check"
+            ]
         );
-        assert_eq!(lines[3], "--image");
+        assert_eq!(lines[4], "--image");
         let canon = std::fs::canonicalize(&refpng)
             .unwrap()
             .display()
             .to_string();
-        assert_eq!(lines[4], canon);
-        let instruction = lines[5..].join("\n");
+        assert_eq!(lines[5], canon);
+        let instruction = lines[6..].join("\n");
         assert!(instruction.contains("a cat"));
         assert!(
             instruction.contains(&canon),
@@ -583,7 +594,7 @@ mod tests {
 
     const DOCTOR_OK_SCRIPT: &str = r#"if [ "$1" = "--version" ]; then echo "codex-cli 0.144.0"; exit 0; fi
 if [ "$1" = "login" ]; then echo "Logged in using ChatGPT"; exit 0; fi
-if [ "$1" = "exec" ] && [ "$2" = "--help" ]; then echo "usage: codex exec [--full-auto] [--image <path>]"; exit 0; fi
+if [ "$1" = "exec" ] && [ "$2" = "--help" ]; then echo "usage: codex exec [--sandbox <MODE>] [--image <path>]"; exit 0; fi
 exit 1
 "#;
 
@@ -598,7 +609,7 @@ exit 1
         assert!(
             lines
                 .iter()
-                .any(|l| l.contains("--full-auto/--image supported"))
+                .any(|l| l.contains("--sandbox/--image supported"))
         );
     }
 
