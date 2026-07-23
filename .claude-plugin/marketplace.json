@@ -3,6 +3,6 @@
   "description": "cc-uplink — Claude Code's unified outbound channel layer (tmux peer agents + image generation via six fixed MCP tools)",
   "owner": { "name": "XBlueSky", "url": "https://github.com/XBlueSky" },
   "plugins": [
-    { "name": "cc-uplink", "source": "./" }
+    { "name": "cc-uplink", "source": "./plugins/cc-uplink" }
   ]
 }

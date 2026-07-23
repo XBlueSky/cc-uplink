@@ -139,8 +139,8 @@ Downstream contracts (OpenAI API, Codex CLI): `docs/downstream-contracts.md`.
 Three version fields move together in one release commit:
 
 1. `Cargo.toml` `version`
-2. `.claude-plugin/plugin.json` `version` (plugin cache/display axis)
-3. `.claude-plugin/server-version` (the binary the plugin launcher pins)
+2. `plugins/cc-uplink/.claude-plugin/plugin.json` `version` (plugin cache/display axis)
+3. `plugins/cc-uplink/.claude-plugin/server-version` (the binary the plugin launcher pins)
 
 ```bash
 git commit -am "chore: release vX.Y.Z"

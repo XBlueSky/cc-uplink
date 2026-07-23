@@ -7,7 +7,8 @@
 
 use crate::core::driver::{ReplyHint, SendRequest};
 
-pub(crate) const SKILL_MD: &str = include_str!("../../skills/uplink/SKILL.md");
+pub(crate) const SKILL_MD: &str =
+    include_str!("../../plugins/cc-uplink/skills/uplink/SKILL.md");
 
 /// argv (after the binary) for `claude mcp add …` — kept as data so tests
 /// pin the exact registration command.
