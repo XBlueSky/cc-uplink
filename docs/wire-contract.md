@@ -19,7 +19,8 @@ zero shared mutable state between core and drivers.
 | `doctor()` | — | `DoctorReport {driver, ok, lines[]}` |
 
 Errors: `DriverError {kind: NotFound|Unavailable|Rejected|Timeout|Upstream|Invalid, message, hint?, evidence?}`, rendered as
-`uplink error [<driver>:<Kind>]: <message> — hint: <hint>`.
+`uplink error [<driver>:<Kind>]: <message> — hint: <hint>`. The ` — hint: <hint>`
+suffix is omitted entirely when `hint` is absent.
 
 ## Semantics notes
 

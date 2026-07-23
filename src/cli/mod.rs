@@ -34,9 +34,9 @@ pub(crate) async fn run_setup(
     claude_bin: &str,
     claude_home: &std::path::Path,
 ) -> anyhow::Result<()> {
-    let exe = std::env::current_exe()?;
     let skill = install_skill(claude_home)?;
     println!("installed skill: {}", skill.display());
+    let exe = std::env::current_exe()?;
     let args = mcp_add_args(&exe.display().to_string());
     let st = tokio::process::Command::new(claude_bin)
         .args(&args)

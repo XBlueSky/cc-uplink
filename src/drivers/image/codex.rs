@@ -146,6 +146,7 @@ async fn run_capture(bin: &str, args: &[&str]) -> Option<String> {
         tokio::process::Command::new(bin)
             .args(args)
             .stdin(std::process::Stdio::null())
+            .kill_on_drop(true)
             .output(),
     )
     .await
@@ -163,6 +164,7 @@ async fn run_status(bin: &str, args: &[&str]) -> Option<bool> {
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
+            .kill_on_drop(true)
             .status(),
     )
     .await

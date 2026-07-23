@@ -411,3 +411,16 @@ v1 merge; each is on a secondary/audit/cosmetic path.
   `LineBuffer` strips ANSI per `%output` chunk so an escape split across two
   chunks can leak a fragment into a logged envelope; concurrent `LogSink`
   writers can interleave in the JSONL log.
+- **`channel_describe` over-returns sibling-backend ops for composite drivers.**
+  For an `image:<backend>` channel, `channel_describe` returns ALL image
+  backends' ops (both `openai` and `codex` `generate`/`edit` schemas), because
+  the frozen `Driver::ops()` takes no address. The `[openai]`/`[codex]` summary
+  prefixes disambiguate, and the `invoke` path routes correctly by address, so
+  this is non-fatal. A proper fix (address-aware `ops(addr)`) is a
+  `Driver`-trait change deferred with the §16 v3 out-of-process protocol; until
+  then it is a documented limitation.
+- **`image:openai` output filenames are second-precision.** `image_filename`
+  names files `<UTC-second-ts>-<n>.png`; two `generate` calls completing in
+  the same wall-clock second overwrite each other's `-<n>.png`. Rare given API
+  latency; a sub-second/random suffix would remove the footgun (weigh against
+  spec §6's `<UTC-ts>-<n>.png` shape).

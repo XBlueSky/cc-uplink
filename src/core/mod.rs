@@ -3,6 +3,10 @@ pub mod envelope;
 pub mod logsink;
 pub mod registry;
 
+/// Hand-rolled RFC3339 UTC timestamp (seconds precision) from `SystemTime`,
+/// avoiding a `chrono` dependency for a single call site. Uses the standard
+/// civil-calendar algorithm (Howard Hinnant's `civil_from_days`) to turn
+/// days-since-epoch into y/m/d.
 pub fn now_rfc3339() -> String {
     let d = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)

@@ -9,7 +9,7 @@ matter how many ways Claude can reach the outside world.
 |---|---|
 | `channel_list()` | Enumerate channels across drivers |
 | `channel_describe(channel, op?)` | On-demand JSON Schema for an op |
-| `channel_send(channel, message, opts?)` | Async message (tmux: inject → verify → Enter, evidence-bearing receipt) |
+| `channel_send(channel, message, opts?)` | Async message (tmux: inject → verify → Enter, evidence-bearing receipt); `image:*` channels are invoke-only, so `channel_send` is rejected there — use `channel_invoke` with `generate`/`edit` |
 | `channel_invoke(channel, op, args)` | Capability call (tmux ops, image generate/edit) |
 | `channel_recv(cursor?)` | Drain inbound envelope audit log |
 | `channel_doctor()` | Aggregated per-driver diagnostics |
