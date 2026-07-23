@@ -43,9 +43,17 @@ code that speaks them MUST update this file in the same commit
   `codex login status` exits 0 when logged in; `codex exec --help`
   advertises `--sandbox` and `--image`.
 - Timeout: one codex run is capped at 600 s (`Timeout` error beyond that).
+- Every spawn of `codex_bin` (exec, doctor probes) retries up to 5× on
+  ETXTBSY with short backoff — the classic fork/exec race when the binary
+  was just written (cargo applies the same mitigation); surfaced as flaky
+  spawn failures in parallel test runs.
 
 ## Changelog
 
+- 2026-07-23: all codex spawns gained ETXTBSY retry (5×, short backoff) —
+  first GitHub Actions run exposed the fork/exec race as a flaky
+  `cargo test --lib` failure; reproduced locally at iteration 1 of a
+  200-run stress loop.
 - 2026-07-23: codex spawn/doctor switched from `--full-auto` to
   `--sandbox workspace-write` — codex-cli 0.144.6 hides `--full-auto` from
   `exec --help` (still parses as a hidden alias), which false-DEGRADED the

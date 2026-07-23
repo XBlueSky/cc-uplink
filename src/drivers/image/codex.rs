@@ -143,16 +143,36 @@ fn abs_existing(path: &str) -> Result<PathBuf, DriverError> {
     })
 }
 
+/// `cmd.output()` with ETXTBSY retry. Exec-ing a freshly written
+/// script/binary can race a concurrent fork that still holds its write fd
+/// open (classic fork/exec race; cargo applies the same mitigation when
+/// running just-built binaries). Seen as flaky spawn failures in parallel
+/// test runs — applies to every spawn of `codex_bin`.
+async fn output_etxtbsy_retry(
+    cmd: &mut tokio::process::Command,
+) -> std::io::Result<std::process::Output> {
+    let mut tries = 0u32;
+    loop {
+        match cmd.output().await {
+            Err(e) if e.kind() == std::io::ErrorKind::ExecutableFileBusy && tries < 5 => {
+                tries += 1;
+                tokio::time::sleep(std::time::Duration::from_millis(10 << tries)).await;
+            }
+            r => break r,
+        }
+    }
+}
+
 /// Run `bin args…` (stdin null, 5 s cap) and return stdout, or None if the
 /// binary is missing/unrunnable/timed out.
 async fn run_capture(bin: &str, args: &[&str]) -> Option<String> {
+    let mut cmd = tokio::process::Command::new(bin);
+    cmd.args(args)
+        .stdin(std::process::Stdio::null())
+        .kill_on_drop(true);
     let out = tokio::time::timeout(
         std::time::Duration::from_secs(5),
-        tokio::process::Command::new(bin)
-            .args(args)
-            .stdin(std::process::Stdio::null())
-            .kill_on_drop(true)
-            .output(),
+        output_etxtbsy_retry(&mut cmd),
     )
     .await
     .ok()?
@@ -162,20 +182,20 @@ async fn run_capture(bin: &str, args: &[&str]) -> Option<String> {
 
 /// Like `run_capture` but only reports whether the command exited 0.
 async fn run_status(bin: &str, args: &[&str]) -> Option<bool> {
-    let st = tokio::time::timeout(
+    let mut cmd = tokio::process::Command::new(bin);
+    cmd.args(args)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .kill_on_drop(true);
+    let out = tokio::time::timeout(
         std::time::Duration::from_secs(5),
-        tokio::process::Command::new(bin)
-            .args(args)
-            .stdin(std::process::Stdio::null())
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .kill_on_drop(true)
-            .status(),
+        output_etxtbsy_retry(&mut cmd),
     )
     .await
     .ok()?
     .ok()?;
-    Some(st.success())
+    Some(out.status.success())
 }
 
 impl CodexBackend {
@@ -194,7 +214,7 @@ impl CodexBackend {
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
             .kill_on_drop(true);
-        let out = tokio::time::timeout(CODEX_TIMEOUT, cmd.output())
+        let out = tokio::time::timeout(CODEX_TIMEOUT, output_etxtbsy_retry(&mut cmd))
             .await
             .map_err(|_| {
                 DriverError::new(
@@ -544,7 +564,7 @@ mod tests {
             .await
             .err()
             .unwrap();
-        assert!(matches!(e.kind, ErrorKind::Upstream));
+        assert!(matches!(e.kind, ErrorKind::Upstream), "unexpected: {e:?}");
         assert!(e.evidence.unwrap().contains("sandbox denied"));
     }
 
@@ -557,7 +577,7 @@ mod tests {
             .await
             .err()
             .unwrap();
-        assert!(matches!(e.kind, ErrorKind::Upstream));
+        assert!(matches!(e.kind, ErrorKind::Upstream), "unexpected: {e:?}");
         assert!(e.message.contains("SAVED"));
         assert!(e.evidence.unwrap().contains("trust me"));
     }
