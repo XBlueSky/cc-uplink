@@ -252,6 +252,11 @@ pub async fn build_registry() -> Arc<Registry> {
             cfg.drivers.image_openai,
         )));
     }
+    if cfg.drivers.image_codex.enabled {
+        backends.push(Box::new(crate::drivers::image::codex::CodexBackend::new(
+            cfg.drivers.image_codex,
+        )));
+    }
     if !backends.is_empty() {
         reg.register(Arc::new(crate::drivers::image::ImageDriver::from_backends(
             backends,

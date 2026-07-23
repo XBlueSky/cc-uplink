@@ -138,6 +138,39 @@ fn abs_existing(path: &str) -> Result<PathBuf, DriverError> {
     })
 }
 
+/// Run `bin args…` (stdin null, 5 s cap) and return stdout, or None if the
+/// binary is missing/unrunnable/timed out.
+async fn run_capture(bin: &str, args: &[&str]) -> Option<String> {
+    let out = tokio::time::timeout(
+        std::time::Duration::from_secs(5),
+        tokio::process::Command::new(bin)
+            .args(args)
+            .stdin(std::process::Stdio::null())
+            .output(),
+    )
+    .await
+    .ok()?
+    .ok()?;
+    Some(String::from_utf8_lossy(&out.stdout).to_string())
+}
+
+/// Like `run_capture` but only reports whether the command exited 0.
+async fn run_status(bin: &str, args: &[&str]) -> Option<bool> {
+    let st = tokio::time::timeout(
+        std::time::Duration::from_secs(5),
+        tokio::process::Command::new(bin)
+            .args(args)
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status(),
+    )
+    .await
+    .ok()?
+    .ok()?;
+    Some(st.success())
+}
+
 impl CodexBackend {
     pub(crate) fn new(cfg: ImageCodexCfg) -> Self {
         Self { cfg }
@@ -278,7 +311,51 @@ impl ImageBackend for CodexBackend {
     }
 
     async fn doctor_lines(&self) -> (bool, Vec<String>) {
-        (false, vec!["doctor: not implemented yet".into()])
+        use crate::drivers::image::clip;
+        let mut ok = true;
+        let mut lines = vec![];
+        let Some(vout) = run_capture(&self.cfg.codex_bin, &["--version"]).await else {
+            return (
+                false,
+                vec![format!("not found (bin '{}')", self.cfg.codex_bin)],
+            );
+        };
+        match parse_codex_version(&vout) {
+            Some(v) if version_ok(v) => {
+                lines.push(format!("version: {}.{}.{} (>= 0.142)", v.0, v.1, v.2));
+            }
+            Some(v) => {
+                ok = false;
+                lines.push(format!(
+                    "version: {}.{}.{} — TOO OLD, need >= 0.142",
+                    v.0, v.1, v.2
+                ));
+            }
+            None => {
+                ok = false;
+                lines.push(format!(
+                    "version: unparseable ('{}')",
+                    clip(vout.trim(), 60)
+                ));
+            }
+        }
+        match run_status(&self.cfg.codex_bin, &["login", "status"]).await {
+            Some(true) => lines.push("login: ok".into()),
+            _ => {
+                ok = false;
+                lines.push("login: not logged in (run `codex login`)".into());
+            }
+        }
+        match run_capture(&self.cfg.codex_bin, &["exec", "--help"]).await {
+            Some(h) if h.contains("--full-auto") && h.contains("--image") => {
+                lines.push("exec: --full-auto/--image supported".into());
+            }
+            _ => {
+                ok = false;
+                lines.push("exec: --full-auto/--image not confirmed".into());
+            }
+        }
+        (ok, lines)
     }
 }
 
@@ -500,5 +577,60 @@ mod tests {
             .err()
             .unwrap();
         assert!(matches!(e.kind, ErrorKind::Invalid));
+    }
+
+    const DOCTOR_OK_SCRIPT: &str = r#"if [ "$1" = "--version" ]; then echo "codex-cli 0.144.0"; exit 0; fi
+if [ "$1" = "login" ]; then echo "Logged in using ChatGPT"; exit 0; fi
+if [ "$1" = "exec" ] && [ "$2" = "--help" ]; then echo "usage: codex exec [--full-auto] [--image <path>]"; exit 0; fi
+exit 1
+"#;
+
+    #[tokio::test]
+    async fn doctor_all_green() {
+        let tmp = tempfile::tempdir().unwrap();
+        let b = backend(&fake_codex(tmp.path(), DOCTOR_OK_SCRIPT));
+        let (ok, lines) = b.doctor_lines().await;
+        assert!(ok, "lines: {lines:?}");
+        assert!(lines.iter().any(|l| l.contains("0.144.0")));
+        assert!(lines.iter().any(|l| l.contains("login: ok")));
+        assert!(
+            lines
+                .iter()
+                .any(|l| l.contains("--full-auto/--image supported"))
+        );
+    }
+
+    #[tokio::test]
+    async fn doctor_old_version_degrades() {
+        let tmp = tempfile::tempdir().unwrap();
+        let script = DOCTOR_OK_SCRIPT.replace("0.144.0", "0.141.0");
+        let b = backend(&fake_codex(tmp.path(), &script));
+        let (ok, lines) = b.doctor_lines().await;
+        assert!(!ok);
+        assert!(lines.iter().any(|l| l.contains("TOO OLD")));
+    }
+
+    #[tokio::test]
+    async fn doctor_not_logged_in_degrades() {
+        let tmp = tempfile::tempdir().unwrap();
+        let script = DOCTOR_OK_SCRIPT.replace(
+            r#"if [ "$1" = "login" ]; then echo "Logged in using ChatGPT"; exit 0; fi"#,
+            r#"if [ "$1" = "login" ]; then echo "Not logged in"; exit 1; fi"#,
+        );
+        let b = backend(&fake_codex(tmp.path(), &script));
+        let (ok, lines) = b.doctor_lines().await;
+        assert!(!ok);
+        assert!(lines.iter().any(|l| l.contains("not logged in")));
+    }
+
+    #[tokio::test]
+    async fn doctor_missing_binary() {
+        let b = CodexBackend::new(ImageCodexCfg {
+            enabled: true,
+            codex_bin: "/nonexistent/cc-uplink-no-such-codex".into(),
+        });
+        let (ok, lines) = b.doctor_lines().await;
+        assert!(!ok);
+        assert!(lines[0].contains("not found"));
     }
 }
