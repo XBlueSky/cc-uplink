@@ -26,14 +26,26 @@ matter how many ways Claude can reach the outside world.
   key from env. Ops: `generate`, `edit`. Files land in `./uplink-images/`,
   absolute paths returned.
 - **`image:codex`** — borrows Codex CLI's built-in imagegen via
-  `codex exec --full-auto` (ChatGPT login, no API key needed). Ops:
-  `generate`, `edit`.
+  `codex exec --sandbox workspace-write` (ChatGPT login, no API key needed).
+  Ops: `generate`, `edit`.
 
 ## Install
 
+Prebuilt binaries are on the
+[Releases page](https://github.com/XBlueSky/cc-uplink/releases) — Linux
+builds are fully static musl (x86_64/aarch64, any distro with kernel ≥ 3.2),
+plus macOS (x86_64/aarch64):
+
+```bash
+curl -fsSL https://github.com/XBlueSky/cc-uplink/releases/latest/download/cc-uplink-x86_64-unknown-linux-musl.tar.gz | tar xz
+./cc-uplink setup   # installs companion skill + `claude mcp add`
+```
+
+Or build from source:
+
 ```bash
 cargo build --release
-./target/release/cc-uplink setup   # installs companion skill + `claude mcp add`
+./target/release/cc-uplink setup
 ```
 
 Or register manually:
@@ -99,10 +111,11 @@ Downstream contracts (OpenAI API, Codex CLI): `docs/downstream-contracts.md`.
 
 ## Releasing
 
-Versioning/changelog via [release-plz](https://release-plz.dev), artifacts via
-[cargo-dist](https://opensource.axo.dev/cargo-dist/) (`dist-workspace.toml`):
-static musl Linux (x86_64/aarch64) + macOS (x86_64/aarch64). Windows is
-WSL-only, tier-2. Configs are inert until the repo has a public remote.
+Push a `v*` tag → `.github/workflows/release.yml` builds static musl Linux
+(x86_64/aarch64) + macOS (x86_64/aarch64) tarballs with sha256 checksums and
+attaches them to the GitHub Release. Windows is WSL-only, tier-2.
+Versioning/changelog automation via [release-plz](https://release-plz.dev)
+is configured (`release-plz.toml`) but not yet wired into CI.
 
 ## License
 

@@ -1,5 +1,6 @@
 [workspace]
 changelog_update = true
 git_tag_enable = true
-# Internal-first: no GitHub releases until the repo is public.
+# GitHub Release creation is owned by .github/workflows/release.yml
+# (triggered by tag push); release-plz only manages version + changelog.
 git_release_enable = false

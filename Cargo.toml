@@ -5,6 +5,7 @@ edition = "2024"
 rust-version = "1.85"
 license = "MIT"
 description = "Claude Code's unified outbound channel layer (MCP server + CLI)"
+repository = "https://github.com/XBlueSky/cc-uplink"
 
 [dependencies]
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "process", "io-util", "sync", "time", "fs"] }
