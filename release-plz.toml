@@ -1,0 +1,5 @@
+[workspace]
+changelog_update = true
+git_tag_enable = true
+# Internal-first: no GitHub releases until the repo is public.
+git_release_enable = false
