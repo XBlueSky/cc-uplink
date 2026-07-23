@@ -1,3 +1,4 @@
 /target
 .superpowers/
 /uplink-images
+.claude/settings.local.json

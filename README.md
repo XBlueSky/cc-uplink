@@ -1,5 +1,9 @@
 # cc-uplink
 
+[![CI](https://github.com/XBlueSky/cc-uplink/actions/workflows/ci.yml/badge.svg)](https://github.com/XBlueSky/cc-uplink/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/XBlueSky/cc-uplink)](https://github.com/XBlueSky/cc-uplink/releases)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 Claude Code's unified outbound channel layer: one Rust binary, one stdio MCP
 server, **six fixed tools** — with pluggable drivers underneath. Adding a
 driver never adds a tool, so your tool/skill listing budget stays flat no
@@ -152,6 +156,12 @@ Push a `v*` tag → `.github/workflows/release.yml` builds static musl Linux
 attaches them to the GitHub Release. Windows is WSL-only, tier-2.
 Versioning/changelog automation via [release-plz](https://release-plz.dev)
 is configured (`release-plz.toml`) but not yet wired into CI.
+
+## Contributing
+
+Contributions welcome — see [CONTRIBUTING.md](CONTRIBUTING.md) for dev
+setup, test commands, and PR expectations. Report security issues
+privately per [SECURITY.md](SECURITY.md).
 
 ## License
 

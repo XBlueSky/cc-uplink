@@ -1,0 +1,54 @@
+name: Bug report
+description: Something is broken or behaves unexpectedly
+labels: [bug]
+body:
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What did cc-uplink actually do?
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: Exact commands or tool calls, minimal if possible.
+      placeholder: |
+        1. cc-uplink send tmux:codex "hello"
+        2. ...
+    validations:
+      required: true
+  - type: input
+    id: platform
+    attributes:
+      label: Platform
+      description: OS and architecture.
+      placeholder: e.g. macOS 15 arm64, Ubuntu 24.04 x86_64
+    validations:
+      required: true
+  - type: dropdown
+    id: install-method
+    attributes:
+      label: Install method
+      options:
+        - Claude Code plugin
+        - Prebuilt release binary
+        - Built from source
+    validations:
+      required: true
+  - type: textarea
+    id: doctor
+    attributes:
+      label: cc-uplink doctor output
+      description: Paste the output of `cc-uplink doctor` if you can — it
+        carries per-driver diagnostics. Redact anything sensitive.
+      render: text
+    validations:
+      required: false
