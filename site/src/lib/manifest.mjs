@@ -6,7 +6,41 @@ const REQUIRED = ['id', 'name', 'version', 'description', 'tagline', 'intro']
 const TOOL_COUNT = 6
 
 /**
+ * @typedef {object} Manifest
+ * @property {string} name
+ * @property {string} tagline
+ * @property {string} intro
+ * @property {string} description
+ * @property {string} version
+ * @property {string | null} repository
+ * @property {string[]} tools
+ * @property {{text: string, cmd: string | null}[]} setup
+ * @property {string[]} tips
+ * @property {string[]} traps
+ * @property {{name: string, trigger: string | null, examples: string[]} | null} skill
+ */
+
+/**
+ * Flattens an array of `{text}` entries into `string[]`, throwing if any
+ * entry's `text` is missing or blank. Absent input tolerantly yields `[]`.
+ *
+ * @param {Array<{text?: unknown}>} items
+ * @param {string} name used in the thrown error to name the offending array
+ * @returns {string[]}
+ */
+function flattenTextList(items, name) {
+  return items.map((item, i) => {
+    const text = item?.text
+    if (typeof text !== 'string' || text.trim() === '') {
+      throw new Error(`manifest ${name}[${i}].text is missing or empty`)
+    }
+    return text
+  })
+}
+
+/**
  * @param {string | object} input
+ * @returns {Manifest}
  */
 export function parseManifest(input) {
   const data = typeof input === 'string' ? JSON.parse(input) : input
@@ -30,6 +64,11 @@ export function parseManifest(input) {
       `the site claims six fixed tools but the manifest declares ${tools.length}`,
     )
   }
+  for (const [i, tool] of tools.entries()) {
+    if (typeof tool !== 'string' || tool.trim() === '') {
+      throw new Error(`manifest tools[${i}] is missing or empty`)
+    }
+  }
 
   const skill = plugin.skills?.[0] ?? null
 
@@ -42,8 +81,8 @@ export function parseManifest(input) {
     repository: plugin.repository ?? plugin.homepage ?? null,
     tools,
     setup: (server?.setup ?? []).map((s) => ({ text: s.text, cmd: s.cmd ?? null })),
-    tips: (plugin.tips ?? []).map((t) => t.text),
-    traps: (plugin.traps ?? []).map((t) => t.text),
+    tips: flattenTextList(plugin.tips ?? [], 'tips'),
+    traps: flattenTextList(plugin.traps ?? [], 'traps'),
     skill: skill && {
       name: skill.name,
       trigger: skill.trigger ?? null,
@@ -57,6 +96,19 @@ const DEFAULT_PATH = resolve(
   '../../../.cc-marketspec/dist/manifest.json',
 )
 
+/**
+ * @param {string} [path]
+ * @returns {Manifest}
+ */
 export function loadManifest(path = DEFAULT_PATH) {
-  return parseManifest(readFileSync(path, 'utf8'))
+  let raw
+  try {
+    raw = readFileSync(path, 'utf8')
+  } catch (cause) {
+    throw new Error(
+      `could not read manifest at ${path} — run \`npm run sync\` first`,
+      { cause },
+    )
+  }
+  return parseManifest(raw)
 }
