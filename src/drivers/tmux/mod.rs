@@ -80,6 +80,18 @@ pub fn guard_ok(mark: Option<std::time::Instant>, ttl: Duration) -> bool {
     mark.map(|t| t.elapsed() <= ttl).unwrap_or(false)
 }
 
+/// The error both idle-wait paths return when a pane never goes quiet.
+///
+/// Carries its own triage, because this is a routine outcome rather than a
+/// malfunction: an agent peer blocked on its own command-permission prompt
+/// animates that prompt, and animation is indistinguishable from work.
+fn idle_timeout() -> DriverError {
+    DriverError::new(ErrorKind::Timeout, "pane did not become idle").with_hint(
+        "peer is still working (raise timeout_ms) or is blocked waiting for its \
+         own operator — invoke the read op on this pane to see which",
+    )
+}
+
 impl TmuxDriver {
     pub async fn new(cfg: TmuxCfg) -> Result<Arc<Self>, DriverError> {
         let cli = OneShotCli::from_env();
@@ -385,10 +397,7 @@ impl TmuxDriver {
             let mut last = tokio::time::Instant::now();
             loop {
                 if tokio::time::Instant::now() > deadline {
-                    return Err(DriverError::new(
-                        ErrorKind::Timeout,
-                        "pane did not become idle",
-                    ));
+                    return Err(idle_timeout());
                 }
                 match tokio::time::timeout(Duration::from_millis(quiet_ms), rx.recv()).await {
                     Ok(Ok(ev)) if ev.pane == pane => {
@@ -467,10 +476,7 @@ impl TmuxDriver {
         let mut stable_since = tokio::time::Instant::now();
         loop {
             if tokio::time::Instant::now() > deadline {
-                return Err(DriverError::new(
-                    ErrorKind::Timeout,
-                    "pane did not become idle",
-                ));
+                return Err(idle_timeout());
             }
             let probe = self.activity_probe(pane).await?;
             if probe == last_probe {
@@ -897,5 +903,19 @@ mod tests {
         let s = now_rfc3339();
         assert!(s.ends_with('Z'));
         assert_eq!(s.len(), 20);
+    }
+
+    #[test]
+    fn idle_timeout_names_what_to_check() {
+        let e = idle_timeout();
+        assert!(matches!(e.kind, ErrorKind::Timeout));
+        // A peer blocked at its own permission prompt animates that prompt, and
+        // animation is activity — so this timeout is a routine outcome, not a
+        // malfunction, and it has to say what to look at.
+        let rendered = e.render("tmux");
+        assert!(
+            rendered.contains("read"),
+            "an idle timeout must point at the read op: {rendered}"
+        );
     }
 }
