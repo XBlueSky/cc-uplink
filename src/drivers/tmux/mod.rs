@@ -426,8 +426,34 @@ impl TmuxDriver {
         Ok(serde_json::json!({ "idle": true, "waited_ms": start.elapsed().as_millis() as u64 }))
     }
 
-    /// Polling-based idle detection: waits until `#{history_size}:#{cursor_x},#{cursor_y}`
-    /// is stable for `quiet_ms`, or returns a timeout error at `deadline`. This is the
+    /// What "this pane changed" means on the polling path: pane metadata plus the
+    /// visible screen.
+    ///
+    /// Metadata alone (`#{history_size}` and the cursor position) is blind to a
+    /// TUI that animates by rewriting the same screen region with the cursor
+    /// parked in its input box — which is exactly how Claude Code renders its
+    /// spinner, so a busy peer probed as byte-identical and read as idle.
+    /// Including the screen makes any redraw count as activity; a genuinely idle
+    /// pane renders a constant screen and still settles. `#{history_size}` stays
+    /// in the probe to catch output that scrolled past between two polls.
+    async fn activity_probe(&self, pane: &str) -> Result<String, DriverError> {
+        let meta = self
+            .run(&[
+                "display-message".into(),
+                "-p".into(),
+                "-t".into(),
+                pane.into(),
+                "#{history_size}:#{cursor_x},#{cursor_y}".into(),
+            ])
+            .await?;
+        let screen = self
+            .run(&["capture-pane".into(), "-t".into(), pane.into(), "-p".into()])
+            .await?;
+        Ok(format!("{}\n{screen}", meta.trim()))
+    }
+
+    /// Polling-based idle detection: waits until [`Self::activity_probe`] is stable
+    /// for `quiet_ms`, or returns a timeout error at `deadline`. This is the
     /// fallback used when no event stream is available (cross-session target) and when
     /// an event receiver's broadcast channel has closed mid-wait.
     async fn poll_idle(
@@ -446,15 +472,7 @@ impl TmuxDriver {
                     "pane did not become idle",
                 ));
             }
-            let probe = self
-                .run(&[
-                    "display-message".into(),
-                    "-p".into(),
-                    "-t".into(),
-                    pane.into(),
-                    "#{history_size}:#{cursor_x},#{cursor_y}".into(),
-                ])
-                .await?;
+            let probe = self.activity_probe(pane).await?;
             if probe == last_probe {
                 if stable_since.elapsed() >= Duration::from_millis(quiet_ms) {
                     break;
@@ -488,12 +506,16 @@ impl TmuxDriver {
             .unwrap_or(120_000);
 
         let h0 = self.history_size(pane).await?;
+        // No reply hint: `ask` captures the peer's transcript itself, so asking
+        // it to send the answer back is pure overhead — and against a TUI peer
+        // it is harmful, because shelling out to `tmux send-keys` stalls the peer
+        // at a command-permission prompt and the round-trip never completes.
         let receipt = Driver::send(
             self,
             addr,
             SendRequest {
                 message: message.to_string(),
-                reply_hint: ReplyHint::Full,
+                reply_hint: ReplyHint::None,
             },
         )
         .await?;
