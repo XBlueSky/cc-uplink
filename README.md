@@ -124,7 +124,6 @@ cargo test          # unit + integration (integration spins private-socket tmux 
 cargo fmt --check && cargo clippy --release --all-targets
 ```
 
-Design spec: `docs/superpowers/specs/2026-07-22-cc-uplink-design.md`.
 Driver wire contract: `docs/wire-contract.md`.
 Downstream contracts (OpenAI API, Codex CLI): `docs/downstream-contracts.md`.
 
