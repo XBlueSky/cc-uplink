@@ -1,5 +1,18 @@
 use std::process::Command;
+use std::sync::OnceLock;
 use tempfile::TempDir;
+use tokio::sync::{Mutex, MutexGuard};
+
+/// Serializes every test that points `$TMUX`/`$TMUX_PANE` at its own private
+/// server. Those variables are process-global, so two such tests running
+/// concurrently in this binary would steal each other's driver context (CI
+/// passes `--test-threads=1`; this keeps a plain `cargo test` honest too). Hold
+/// the guard for as long as the driver built from that env is in use — hence an
+/// async mutex, which is safe to hold across the driver's `.await` points.
+pub async fn env_guard() -> MutexGuard<'static, ()> {
+    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    LOCK.get_or_init(|| Mutex::new(())).lock().await
+}
 
 pub struct TmuxTestServer {
     dir: TempDir,

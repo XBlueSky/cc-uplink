@@ -33,8 +33,23 @@ pub fn format_outbound(
     }
 }
 
+/// Prompt/TUI decoration a pane may render in front of an injected envelope: a
+/// Claude Code input box echoes `❯ [reply …]`, a shell echoes `$ [reply …]`, a
+/// boxed TUI echoes `│ [reply …]`.
+const DECORATION: &[char] = &[
+    ' ', '\t', '❯', '›', '>', '$', '#', '%', '|', '│', '┃', '▌', '▎', '⏺', '⎿', '●', '•', '*',
+];
+
+/// Trims a LEADING run of [`DECORATION`] so the envelope match stays anchored.
+/// Anchoring is the point: `format_outbound`'s `ReplyHint::Full` text embeds the
+/// literal `[reply id:<id>] <your answer>`, so a scan-anywhere match would parse
+/// an echo of our own instruction as an inbound reply.
+fn strip_decoration(line: &str) -> &str {
+    line.trim_start_matches(DECORATION)
+}
+
 pub fn parse_inbound(line: &str) -> Option<Inbound> {
-    let line = line.trim();
+    let line = strip_decoration(line.trim());
     if let Some(rest) = line.strip_prefix("[reply id:") {
         let (id, body) = rest.split_once(']')?;
         return Some(Inbound {
@@ -98,6 +113,37 @@ mod tests {
         assert_eq!(r.body, "the answer");
 
         assert!(parse_inbound("plain output line").is_none());
+    }
+
+    #[test]
+    fn parse_reply_behind_tui_prompt_glyph() {
+        // A Claude Code caller's own pane renders the peer's injected reply
+        // inside its input box, so the echoed line carries the prompt glyph.
+        let r = parse_inbound("❯ [reply id:deadbeef] forty-two").unwrap();
+        assert!(matches!(r.kind, InboundKind::Reply));
+        assert_eq!(r.id.as_deref(), Some("deadbeef"));
+        assert_eq!(r.body, "forty-two");
+    }
+
+    #[test]
+    fn parse_uplink_behind_shell_prompt() {
+        let u = parse_inbound("$ [uplink from:codex pane:%2 id:ffffffff] hi there").unwrap();
+        assert!(matches!(u.kind, InboundKind::Uplink));
+        assert_eq!(u.from.as_deref(), Some("codex"));
+        assert_eq!(u.body, "hi there");
+    }
+
+    #[test]
+    fn echoed_reply_instruction_is_not_inbound() {
+        // `format_outbound`'s ReplyHint::Full text embeds this literal shape, so
+        // a scan-anywhere match would parse an echo of our OWN instruction as a
+        // peer reply. Decoration stripping must stay anchored.
+        assert!(
+            parse_inbound(
+                "tmux send-keys -t %0 -l '[reply id:6b3b20e6] 391' \\; send-keys -t %0 Enter"
+            )
+            .is_none()
+        );
     }
 
     #[test]

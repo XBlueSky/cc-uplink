@@ -69,6 +69,7 @@ async fn driver_channels_label_read() {
         .run(&["list-panes", "-t", "it", "-F", "#{pane_id}"])
         .trim()
         .to_string();
+    let _env = common::env_guard().await;
     unsafe {
         std::env::set_var("TMUX", format!("{},0,0", srv.sock()));
         std::env::set_var("TMUX_PANE", &pane);
@@ -104,6 +105,7 @@ async fn send_delivers_and_verifies() {
         .run(&["list-panes", "-t", "it", "-F", "#{pane_id}"])
         .trim()
         .to_string();
+    let _env = common::env_guard().await;
     unsafe {
         std::env::set_var("TMUX", format!("{},0,0", srv.sock()));
         std::env::set_var("TMUX_PANE", &own);
@@ -170,6 +172,7 @@ async fn keys_requires_recent_read() {
         .run(&["list-panes", "-t", "it", "-F", "#{pane_id}"])
         .trim()
         .to_string();
+    let _env = common::env_guard().await;
     unsafe {
         std::env::set_var("TMUX", format!("{},0,0", srv.sock()));
         std::env::set_var("TMUX_PANE", &own);
@@ -209,6 +212,7 @@ async fn ask_returns_transcript_delta() {
         .run(&["list-panes", "-t", "it", "-F", "#{pane_id}"])
         .trim()
         .to_string();
+    let _env = common::env_guard().await;
     unsafe {
         std::env::set_var("TMUX", format!("{},0,0", srv.sock()));
         std::env::set_var("TMUX_PANE", &own);
@@ -261,6 +265,7 @@ async fn recv_sees_inbound_reply_envelope() {
     // `sh`, so the pane's output is the deterministic, undecorated text this
     // test asserts on.
     srv.run(&["respawn-pane", "-k", "-t", &own, "sh"]);
+    let _env = common::env_guard().await;
     unsafe {
         std::env::set_var("TMUX", format!("{},0,0", srv.sock()));
         std::env::set_var("TMUX_PANE", &own);
@@ -287,4 +292,139 @@ async fn recv_sees_inbound_reply_envelope() {
             .iter()
             .any(|i| i.id.as_deref() == Some("cafe0001"))
     );
+}
+
+#[tokio::test]
+async fn ask_envelope_carries_no_reply_block() {
+    let Some(srv) = common::TmuxTestServer::start() else {
+        return;
+    };
+    let own = srv
+        .run(&["list-panes", "-t", "it", "-F", "#{pane_id}"])
+        .trim()
+        .to_string();
+    let _env = common::env_guard().await;
+    unsafe {
+        std::env::set_var("TMUX", format!("{},0,0", srv.sock()));
+        std::env::set_var("TMUX_PANE", &own);
+    }
+    srv.run(&["split-window", "-t", "it", "-d", "cat"]);
+    let panes = srv.run(&["list-panes", "-t", "it", "-F", "#{pane_id}"]);
+    let target = panes
+        .lines()
+        .find(|p| p.trim() != own)
+        .unwrap()
+        .trim()
+        .to_string();
+    let d = cc_uplink::drivers::tmux::TmuxDriver::new(Default::default())
+        .await
+        .unwrap();
+
+    let out = d
+        .invoke(
+            &target,
+            "ask",
+            serde_json::json!({"message": "who are you", "quiet_ms": 600, "timeout_ms": 15000}),
+        )
+        .await
+        .unwrap();
+    let t = out["transcript"].as_str().unwrap();
+    assert!(
+        t.contains("[uplink "),
+        "the injected envelope should be in the transcript, got: {t}"
+    );
+    // `ask` captures the peer's transcript itself, so instructing the peer to
+    // send a reply back is pure overhead — and against a TUI peer it stalls at
+    // a shell-permission prompt.
+    assert!(
+        !t.contains("(reply:"),
+        "ask must not ask the peer to reply, got: {t}"
+    );
+}
+
+/// Cross-session target: no control-mode event stream is available for it, which
+/// forces `op_await_idle` down the polling path.
+fn spawn_target_session(srv: &common::TmuxTestServer, shell_command: &str) -> String {
+    srv.run(&[
+        "new-session",
+        "-d",
+        "-s",
+        "other",
+        "-x",
+        "180",
+        "-y",
+        "45",
+        shell_command,
+    ]);
+    srv.run(&["list-panes", "-t", "other", "-F", "#{pane_id}"])
+        .trim()
+        .to_string()
+}
+
+#[tokio::test]
+async fn poll_idle_treats_in_place_redraw_as_activity() {
+    let Some(srv) = common::TmuxTestServer::start() else {
+        return;
+    };
+    // A TUI peer (Claude Code) animates by rewriting the same screen region and
+    // parking the cursor back in its input box: no line ever scrolls into
+    // history and the cursor never moves, so #{history_size} and
+    // #{cursor_x},#{cursor_y} are constant while the peer is busy.
+    let redraw = r#"while :; do printf '\033[3;1Hspin-a \033[1;1H'; sleep 0.1; printf '\033[3;1Hspin-bb\033[1;1H'; sleep 0.1; done"#;
+    let target = spawn_target_session(&srv, redraw);
+    let own = srv
+        .run(&["list-panes", "-t", "it", "-F", "#{pane_id}"])
+        .trim()
+        .to_string();
+    let _env = common::env_guard().await;
+    unsafe {
+        std::env::set_var("TMUX", format!("{},0,0", srv.sock()));
+        std::env::set_var("TMUX_PANE", &own);
+    }
+    let d = cc_uplink::drivers::tmux::TmuxDriver::new(Default::default())
+        .await
+        .unwrap();
+
+    let e = d
+        .invoke(
+            &target,
+            "await_idle",
+            serde_json::json!({"quiet_ms": 800, "timeout_ms": 4000}),
+        )
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(e.kind, cc_uplink::error::ErrorKind::Timeout),
+        "an animating pane must never read as idle, got: {e:?}"
+    );
+}
+
+#[tokio::test]
+async fn poll_idle_reports_idle_for_quiet_pane() {
+    let Some(srv) = common::TmuxTestServer::start() else {
+        return;
+    };
+    let target = spawn_target_session(&srv, "cat");
+    let own = srv
+        .run(&["list-panes", "-t", "it", "-F", "#{pane_id}"])
+        .trim()
+        .to_string();
+    let _env = common::env_guard().await;
+    unsafe {
+        std::env::set_var("TMUX", format!("{},0,0", srv.sock()));
+        std::env::set_var("TMUX_PANE", &own);
+    }
+    let d = cc_uplink::drivers::tmux::TmuxDriver::new(Default::default())
+        .await
+        .unwrap();
+
+    let out = d
+        .invoke(
+            &target,
+            "await_idle",
+            serde_json::json!({"quiet_ms": 600, "timeout_ms": 10000}),
+        )
+        .await
+        .unwrap();
+    assert_eq!(out["idle"], true, "a quiet pane must read as idle");
 }

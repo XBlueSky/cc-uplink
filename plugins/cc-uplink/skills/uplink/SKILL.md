@@ -27,11 +27,19 @@ label), `image:openai`, `image:codex`.
    - Need the peer's complete output now: `channel_invoke(tmux:codex, "ask",
      {message, quiet_ms?, timeout_ms?})` — mechanized round-trip that returns
      everything the peer printed since your question (may include TUI chrome).
+   - Answering a `channel_send` costs the peer a shell command (`tmux
+     send-keys`), so an agent peer that gates shell access — Claude Code, for
+     one — stalls at a permission prompt until its operator allows it. `ask`
+     has no such dependency: it reads the peer's pane directly.
 5. **keys guard:** `channel_invoke(tmux:X, "keys", …)` requires a
    `channel_invoke(tmux:X, "read", …)` of that pane within the last 60 s.
    Read, look, then press.
-6. **Send failures carry evidence.** A failed send receipt/error includes a
-   capture excerpt. Read it and decide; cc-uplink never auto-retries.
+6. **Failures carry evidence; nothing auto-retries.** A failed send
+   receipt/error includes a capture excerpt — read it and decide. An `ask`
+   that returns `Timeout` means the pane never went quiet: either the peer is
+   still working (raise `timeout_ms`) or it is blocked waiting for its own
+   operator — a pending permission dialog animates, and animation reads as
+   activity. Use `read` on the pane to see which before retrying.
 7. **Images are invoke-only.** `channel_send` to `image:*` is rejected.
    (Arg lists below are orientation only — the schema from
    `channel_describe` is authoritative.)

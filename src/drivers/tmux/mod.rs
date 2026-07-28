@@ -80,6 +80,18 @@ pub fn guard_ok(mark: Option<std::time::Instant>, ttl: Duration) -> bool {
     mark.map(|t| t.elapsed() <= ttl).unwrap_or(false)
 }
 
+/// The error both idle-wait paths return when a pane never goes quiet.
+///
+/// Carries its own triage, because this is a routine outcome rather than a
+/// malfunction: an agent peer blocked on its own command-permission prompt
+/// animates that prompt, and animation is indistinguishable from work.
+fn idle_timeout() -> DriverError {
+    DriverError::new(ErrorKind::Timeout, "pane did not become idle").with_hint(
+        "peer is still working (raise timeout_ms) or is blocked waiting for its \
+         own operator — invoke the read op on this pane to see which",
+    )
+}
+
 impl TmuxDriver {
     pub async fn new(cfg: TmuxCfg) -> Result<Arc<Self>, DriverError> {
         let cli = OneShotCli::from_env();
@@ -385,10 +397,7 @@ impl TmuxDriver {
             let mut last = tokio::time::Instant::now();
             loop {
                 if tokio::time::Instant::now() > deadline {
-                    return Err(DriverError::new(
-                        ErrorKind::Timeout,
-                        "pane did not become idle",
-                    ));
+                    return Err(idle_timeout());
                 }
                 match tokio::time::timeout(Duration::from_millis(quiet_ms), rx.recv()).await {
                     Ok(Ok(ev)) if ev.pane == pane => {
@@ -426,8 +435,34 @@ impl TmuxDriver {
         Ok(serde_json::json!({ "idle": true, "waited_ms": start.elapsed().as_millis() as u64 }))
     }
 
-    /// Polling-based idle detection: waits until `#{history_size}:#{cursor_x},#{cursor_y}`
-    /// is stable for `quiet_ms`, or returns a timeout error at `deadline`. This is the
+    /// What "this pane changed" means on the polling path: pane metadata plus the
+    /// visible screen.
+    ///
+    /// Metadata alone (`#{history_size}` and the cursor position) is blind to a
+    /// TUI that animates by rewriting the same screen region with the cursor
+    /// parked in its input box — which is exactly how Claude Code renders its
+    /// spinner, so a busy peer probed as byte-identical and read as idle.
+    /// Including the screen makes any redraw count as activity; a genuinely idle
+    /// pane renders a constant screen and still settles. `#{history_size}` stays
+    /// in the probe to catch output that scrolled past between two polls.
+    async fn activity_probe(&self, pane: &str) -> Result<String, DriverError> {
+        let meta = self
+            .run(&[
+                "display-message".into(),
+                "-p".into(),
+                "-t".into(),
+                pane.into(),
+                "#{history_size}:#{cursor_x},#{cursor_y}".into(),
+            ])
+            .await?;
+        let screen = self
+            .run(&["capture-pane".into(), "-t".into(), pane.into(), "-p".into()])
+            .await?;
+        Ok(format!("{}\n{screen}", meta.trim()))
+    }
+
+    /// Polling-based idle detection: waits until [`Self::activity_probe`] is stable
+    /// for `quiet_ms`, or returns a timeout error at `deadline`. This is the
     /// fallback used when no event stream is available (cross-session target) and when
     /// an event receiver's broadcast channel has closed mid-wait.
     async fn poll_idle(
@@ -441,20 +476,9 @@ impl TmuxDriver {
         let mut stable_since = tokio::time::Instant::now();
         loop {
             if tokio::time::Instant::now() > deadline {
-                return Err(DriverError::new(
-                    ErrorKind::Timeout,
-                    "pane did not become idle",
-                ));
+                return Err(idle_timeout());
             }
-            let probe = self
-                .run(&[
-                    "display-message".into(),
-                    "-p".into(),
-                    "-t".into(),
-                    pane.into(),
-                    "#{history_size}:#{cursor_x},#{cursor_y}".into(),
-                ])
-                .await?;
+            let probe = self.activity_probe(pane).await?;
             if probe == last_probe {
                 if stable_since.elapsed() >= Duration::from_millis(quiet_ms) {
                     break;
@@ -488,12 +512,16 @@ impl TmuxDriver {
             .unwrap_or(120_000);
 
         let h0 = self.history_size(pane).await?;
+        // No reply hint: `ask` captures the peer's transcript itself, so asking
+        // it to send the answer back is pure overhead — and against a TUI peer
+        // it is harmful, because shelling out to `tmux send-keys` stalls the peer
+        // at a command-permission prompt and the round-trip never completes.
         let receipt = Driver::send(
             self,
             addr,
             SendRequest {
                 message: message.to_string(),
-                reply_hint: ReplyHint::Full,
+                reply_hint: ReplyHint::None,
             },
         )
         .await?;
@@ -875,5 +903,19 @@ mod tests {
         let s = now_rfc3339();
         assert!(s.ends_with('Z'));
         assert_eq!(s.len(), 20);
+    }
+
+    #[test]
+    fn idle_timeout_names_what_to_check() {
+        let e = idle_timeout();
+        assert!(matches!(e.kind, ErrorKind::Timeout));
+        // A peer blocked at its own permission prompt animates that prompt, and
+        // animation is activity — so this timeout is a routine outcome, not a
+        // malfunction, and it has to say what to look at.
+        let rendered = e.render("tmux");
+        assert!(
+            rendered.contains("read"),
+            "an idle timeout must point at the read op: {rendered}"
+        );
     }
 }
