@@ -80,10 +80,21 @@ const release = resolveRelease(fetchedRelease, manifest.version, repoSlug || und
   </div>
 
   <script>
-    import { initTimeline } from '../scripts/timeline.mjs'
+    import { initTimeline, prefersReducedMotion } from '../scripts/timeline.mjs'
+    import { initAmbience } from '../scripts/ambience.mjs'
 
     const root = document.querySelector('[data-acts]')
-    if (root) initTimeline({ root })
+    const canvas = document.querySelector('[data-ambience]')
+    const reducedMotion = prefersReducedMotion()
+
+    const ambience = canvas ? initAmbience({ canvas, reducedMotion }) : null
+
+    if (root) {
+      initTimeline({
+        root,
+        onProgress: (p) => ambience?.setProgress(p),
+      })
+    }
   </script>
 
   <style>
