@@ -18,9 +18,11 @@ export function prefersReducedMotion(mq = window.matchMedia('(prefers-reduced-mo
  * those side effects for reduced-motion users too, defeating the whole
  * point of the early return.
  *
- * Every path resolves calling `onProgress` exactly once with `0`, so a
- * caller wiring in a shader uniform (Task 5) always sees a consistent first
- * frame no matter which path returned.
+ * Every path resolves calling `onProgress` exactly once at init: `0` on the
+ * reduced-motion and no-sections paths, or the trigger's (possibly
+ * browser-restored) scroll progress on the motion path — so a caller wiring
+ * in a shader uniform (Task 5) always sees a consistent first frame no
+ * matter which path returned, including after a mid-scroll reload.
  *
  * @param {{root: HTMLElement, onProgress?: (p: number) => void, mq?: MediaQueryList}} options
  * @returns {Promise<{destroy(): void}>}
@@ -45,6 +47,14 @@ export async function initTimeline({ root, onProgress = () => {}, mq } = {}) {
 
   gsap.registerPlugin(ScrollTrigger)
 
+  // The signal's travel distance in pixels, cached lazily and re-measured
+  // once per ScrollTrigger refresh (see `onRefresh` below) rather than on
+  // every frame — `paintAct` runs inside the scrub's rAF loop, so a layout
+  // read there would thrash. `0` doubles as "not measured yet"; the signal
+  // pane is never actually 2px wide, so this can't be mistaken for a real
+  // measurement.
+  let signalSpan = 0
+
   /**
    * Per-act internal motion. Every value is derived from `enter` (0..1
    * within the act), never from elapsed time, so scrubbing backwards is
@@ -66,12 +76,25 @@ export async function initTimeline({ root, onProgress = () => {}, mq } = {}) {
       const typed = section.querySelector('[data-typewriter]')
       if (typed) {
         const full = typed.dataset.text ?? ''
-        typed.textContent = typedSlice(full, clamp01(enter / 0.75))
+        const next = typedSlice(full, clamp01(enter / 0.75))
+        // Skip the write when the slice hasn't changed: an unconditional
+        // `textContent` assignment tears down and recreates the text node
+        // every tick, dirtying the <pre> subtree's layout 60x/s even while
+        // the act is fully hidden (autoAlpha's visibility:hidden does not
+        // elide layout work).
+        if (typed.textContent !== next) typed.textContent = next
       }
       const signal = section.querySelector('[data-signal]')
       if (signal) {
+        // `xPercent` resolves against the signal's own (2px) border box, so
+        // it would only ever travel 2px regardless of the pane's width. A
+        // pixel `x` transform against the pane's actual width is what makes
+        // it cross the pane.
+        if (signalSpan === 0 && signal.parentElement) {
+          signalSpan = signal.parentElement.clientWidth - 2
+        }
         gsap.set(signal, {
-          xPercent: enter * 100,
+          x: enter * signalSpan,
           opacity: enter > 0.02 && enter < 0.9 ? 1 : 0,
         })
       }
@@ -80,9 +103,10 @@ export async function initTimeline({ root, onProgress = () => {}, mq } = {}) {
     if (id === 3) {
       const reply = section.querySelector('[data-reply]')
       if (reply) {
+        const t = clamp01((enter - 0.25) / 0.35)
         gsap.set(reply, {
-          opacity: clamp01((enter - 0.25) / 0.35),
-          y: (1 - clamp01((enter - 0.25) / 0.35)) * 8,
+          opacity: t,
+          y: (1 - t) * 8,
         })
       }
     }
@@ -91,9 +115,10 @@ export async function initTimeline({ root, onProgress = () => {}, mq } = {}) {
   // Stacking only makes sense once this script can also drive the
   // un-stacking, so the `.motion` class — and the pinning it implies — are
   // both added here, together, rather than the class living unconditionally
-  // in CSS. `applyProgress(0)` right after `ScrollTrigger.create` below
-  // paints the first frame in the same tick the class lands, so acts 1-5
-  // are never overprinted, not even for a single frame.
+  // in CSS. The explicit `applyProgress` call right after
+  // `ScrollTrigger.create` below paints the first frame in the same tick
+  // the class lands, so acts 1-5 are never overprinted, not even for a
+  // single frame.
   root.classList.add('motion')
 
   const lenis = new Lenis({ autoRaf: false })
@@ -150,13 +175,24 @@ export async function initTimeline({ root, onProgress = () => {}, mq } = {}) {
     anticipatePin: 1,
     invalidateOnRefresh: true,
     onUpdate: (self) => applyProgress(self.progress),
+    // Invalidate the cached signal span on every refresh (e.g. a resize),
+    // not on every frame — the same once-per-refresh cadence
+    // `invalidateOnRefresh` already uses for ScrollTrigger's own geometry.
+    onRefresh: () => {
+      signalSpan = 0
+    },
   })
 
   // ScrollTrigger does not invoke onUpdate at create time (progress 0
   // equals its own initial prevProgress, so the internal guard skips it),
-  // so the first paint has to be forced explicitly here — otherwise all six
-  // acts stay overprinted at full opacity until the user's first scroll.
-  applyProgress(0)
+  // so the first paint has to be forced explicitly here. Using
+  // `trigger.progress` rather than a hardcoded 0 matters on a mid-scroll
+  // reload: the browser restores scroll position before this script runs,
+  // ScrollTrigger's own initial refresh already computes `trigger.progress`
+  // to match, and painting from that instead of 0 means the correct act
+  // shows immediately instead of snapping to act 0 until the user's first
+  // scroll input self-corrects it.
+  applyProgress(clamp01(trigger.progress))
 
   return {
     destroy() {
@@ -165,6 +201,16 @@ export async function initTimeline({ root, onProgress = () => {}, mq } = {}) {
       lenis.destroy()
       root.classList.remove('motion')
       gsap.set(sections, { clearProps: 'all' })
+      // `clearProps` on `sections` only reaches the six act elements
+      // themselves — it does not touch the descendants `paintAct` wrote to
+      // directly, which would otherwise stay frozen wherever the scrub last
+      // left them (the split pane at scaleX 0.2/opacity 0, the reply
+      // hidden, the signal mid-flight).
+      gsap.set(root.querySelectorAll('[data-split-target], [data-signal], [data-reply]'), {
+        clearProps: 'all',
+      })
+      const typed = root.querySelector('[data-typewriter]')
+      if (typed) typed.textContent = typed.dataset.text ?? ''
       gsap.ticker.lagSmoothing(500, 33)
     },
   }

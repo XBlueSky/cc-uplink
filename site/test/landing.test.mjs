@@ -85,3 +85,46 @@ test('landing ships no ambience raster image', (t) => {
   const html = readFileSync(INDEX, 'utf8')
   assert.ok(!html.includes('ambience-'), 'an ambience reference PNG was shipped')
 })
+
+test('act 2 typewriter data-text matches its rendered no-JS fallback text exactly', (t) => {
+  if (!existsSync(INDEX)) return t.skip('run `npm run build` first')
+  const html = readFileSync(INDEX, 'utf8')
+
+  // Parsed by hand rather than with a `<code ...>` regex: the data-text
+  // attribute value legitimately contains a literal `>` (from `<your
+  // answer>`), which is valid unescaped inside a double-quoted HTML
+  // attribute but breaks any `[^>]*`-based tag-boundary regex — it would
+  // mistake that inner `>` for the end of the opening tag.
+  const marker = 'data-text="'
+  const markerStart = html.indexOf(marker)
+  assert.ok(markerStart !== -1, 'data-text attribute not found — did the typewriter hook get dropped?')
+
+  const valueStart = markerStart + marker.length
+  const valueEnd = html.indexOf('"', valueStart)
+  const dataTextRaw = html.slice(valueStart, valueEnd)
+
+  const tagCloseIdx = html.indexOf('>', valueEnd)
+  const codeCloseIdx = html.indexOf('</code>', tagCloseIdx)
+  assert.ok(codeCloseIdx !== -1, 'closing </code> not found after data-text')
+  const codeTextRaw = html.slice(tagCloseIdx + 1, codeCloseIdx)
+
+  const dataText = decodeEntities(dataTextRaw)
+  const codeText = decodeEntities(codeTextRaw)
+
+  assert.ok(dataText.length > 0, 'data-text decoded to an empty string')
+  assert.equal(
+    dataText,
+    codeText,
+    'data-text must decode to exactly the rendered <code> fallback text — a no-JS visitor and the typewriter must agree',
+  )
+})
+
+test('landing carries all four act-choreography hooks, each exactly once', (t) => {
+  if (!existsSync(INDEX)) return t.skip('run `npm run build` first')
+  const html = readFileSync(INDEX, 'utf8')
+
+  for (const hook of ['data-split-target', 'data-typewriter', 'data-signal', 'data-reply']) {
+    const count = html.split(hook).length - 1
+    assert.equal(count, 1, `expected exactly one "${hook}", found ${count}`)
+  }
+})
