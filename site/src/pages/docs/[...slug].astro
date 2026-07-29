@@ -8,9 +8,14 @@ export async function getStaticPaths() {
 }
 
 const { entry } = Astro.props
-const { Content } = await render(entry)
+const { Content, headings } = await render(entry)
 
-const title = entry.data.title ?? entry.id.replace(/-/g, ' ')
+// No frontmatter, so entry.data.title is always undefined today — kept as
+// the first fallback anyway so a future frontmatter title still wins. The
+// markdown's own H1 (correctly cased, e.g. "CLI") is the next-best source;
+// only a file with no heading at all falls through to the slug-derived
+// title.
+const title = entry.data.title ?? headings[0]?.text ?? entry.id.replace(/-/g, ' ')
 ---
 <Doc title={title} slug={entry.id}>
   <Content />

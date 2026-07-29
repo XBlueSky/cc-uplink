@@ -16,9 +16,19 @@ function walk(dir) {
 test('dist contains no route derived from an internal docs directory', (t) => {
   if (!existsSync(DIST)) return t.skip('run `npm run build` first')
 
+  // Mirrors assertPublishable's semantics in sync-content.mjs: match whole
+  // path segments, case-insensitively, rather than bare substrings. A
+  // substring check (e.g. `-superpowers-`) would false-positive on an
+  // innocent asset name like `chunk-superpowers-report.js`; segment
+  // matching removes that whole class of false positive while still
+  // catching a leak nested at any depth (`docs/superpowers/...`,
+  // `docs/Superpowers/...`).
   const paths = walk(DIST)
   for (const excluded of EXCLUDED_DIRS) {
-    const leaked = paths.filter((p) => p.includes(`/${excluded}/`) || p.includes(`-${excluded}-`))
+    const excludedLower = excluded.toLowerCase()
+    const leaked = paths.filter((p) =>
+      p.split(/[\\/]/).some((segment) => segment.toLowerCase() === excludedLower),
+    )
     assert.deepEqual(leaked, [], `internal docs leaked into dist: ${leaked.join(', ')}`)
   }
 })
@@ -39,7 +49,22 @@ test('dist docs routes match exactly the expected public set', (t) => {
 test('docs pages ship no JavaScript', (t) => {
   if (!existsSync(DIST)) return t.skip('run `npm run build` first')
 
-  const html = readFileSync(join(DIST, 'docs', 'cli', 'index.html'), 'utf8')
-  assert.ok(!/<script(?![^>]*type="application\/ld\+json")/.test(html),
-    'a docs page shipped a script tag')
+  // Every page actually on disk, not a hardcoded sample of one — so a page
+  // added later is covered automatically instead of silently slipping past
+  // this guard the way a hardcoded list would.
+  const docsDir = join(DIST, 'docs')
+  const pages = readdirSync(docsDir, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => entry.name)
+
+  assert.ok(pages.length > 0, 'expected at least one built docs page')
+
+  for (const page of pages) {
+    const htmlPath = join(docsDir, page, 'index.html')
+    const html = readFileSync(htmlPath, 'utf8')
+    assert.ok(
+      !/<script(?![^>]*type="application\/ld\+json")/i.test(html),
+      `docs page shipped a script tag: ${htmlPath}`,
+    )
+  }
 })
