@@ -8,3 +8,5 @@ docs/superpowers/
 /site/.astro
 /site/src/content/docs
 /site/src/data
+# wrangler writes an account/cache directory here on any pages command
+/.wrangler

@@ -47,6 +47,10 @@ permissions:
 
 jobs:
   build:
+    # A release does not change the source, so re-running the whole gate on the
+    # Release workflow's completion would just double CI cost. The rebuild that
+    # a release does need is the Pages one, below.
+    if: github.event_name != 'workflow_run'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
