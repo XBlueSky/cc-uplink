@@ -89,18 +89,24 @@ const release = resolveRelease(fetchedRelease, manifest.version, repoSlug || und
   <style>
     .acts { position: relative; }
 
-    @media (prefers-reduced-motion: no-preference) {
-      /* Only stack when motion is allowed. Under reduced motion the acts
-         stay in normal document flow — the static layout is the design. */
-      .acts { min-height: 100svh; }
-      .acts :global([data-act]) {
-        position: absolute;
-        inset: 0;
-        display: grid;
-        align-content: center;
-        will-change: transform, opacity;
-      }
-      .acts :global([data-act="0"]) { position: relative; }
+    /*
+     * Stacking is scoped to `.motion`, which only `initTimeline` adds — and
+     * only once it can also drive the un-stacking. That keeps the page
+     * correct both before JS runs and if it fails to load: acts stay in
+     * normal document flow (the static layout is the design) until the
+     * script proves it can take over.
+     */
+    .acts.motion {
+      min-height: 100svh;
+      position: relative;
     }
+    .acts.motion :global([data-act]) {
+      position: absolute;
+      inset: 0;
+      display: grid;
+      align-content: center;
+      will-change: transform, opacity;
+    }
+    .acts.motion :global([data-act="0"]) { position: relative; }
   </style>
 </Base>

@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { gzipSync } from 'node:zlib'
 
@@ -15,6 +15,20 @@ function jsFiles(dir) {
     return entry.name.endsWith('.js') ? [full] : []
   })
 }
+
+test('landing ships the timeline script bundle', (t) => {
+  if (!existsSync(DIST)) return t.skip('run `npm run build` first')
+
+  const files = jsFiles(join(DIST, '_astro'))
+  assert.ok(
+    files.length > 0,
+    'the landing shipped no JS bundle — did the timeline script get dropped?',
+  )
+
+  const html = readFileSync(join(DIST, 'index.html'), 'utf8')
+  assert.ok(html.includes('data-acts'), 'landing HTML is missing the data-acts root')
+  assert.ok(/<script type="module"/.test(html), 'landing HTML has no module script tag')
+})
 
 test('landing JavaScript stays under 60 kB gzipped', (t) => {
   if (!existsSync(DIST)) return t.skip('run `npm run build` first')
