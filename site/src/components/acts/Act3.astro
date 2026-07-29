@@ -10,7 +10,7 @@ const { trap } = Astro.props
   </div>
   <Pane title="$ claude" active={true}>
     <p>&gt; ask codex to review my diff</p>
-    <p class="reply">[reply id:6b3b20e6] LGTM — one nit on error handling</p>
+    <p class="reply" data-reply>[reply id:6b3b20e6] LGTM — one nit on error handling</p>
   </Pane>
 </section>
 
@@ -29,5 +29,5 @@ const { trap } = Astro.props
   .copy { min-width: 0; }
   h2 { font-size: var(--step-2); line-height: 1.1; margin: 0 0 var(--space-m); }
   .trap { color: var(--fg-dim); max-width: 46ch; }
-  .reply { color: var(--cyan); }
+  .reply { color: var(--cyan); will-change: transform, opacity; }
 </style>

@@ -1,4 +1,4 @@
-import { actAt, clamp01, localProgress } from '../lib/actState.mjs'
+import { actAt, clamp01, localProgress, typedSlice } from '../lib/actState.mjs'
 
 export function prefersReducedMotion(mq = window.matchMedia('(prefers-reduced-motion: reduce)')) {
   return mq.matches
@@ -45,6 +45,49 @@ export async function initTimeline({ root, onProgress = () => {}, mq } = {}) {
 
   gsap.registerPlugin(ScrollTrigger)
 
+  /**
+   * Per-act internal motion. Every value is derived from `enter` (0..1
+   * within the act), never from elapsed time, so scrubbing backwards is
+   * exact. Defined here, inside `initTimeline`, so it can close over the
+   * `gsap` binding that only exists after the dynamic import above resolves.
+   */
+  function paintAct(section, id, enter) {
+    if (id === 1) {
+      const target = section.querySelector('[data-split-target]')
+      if (target) {
+        gsap.set(target, {
+          scaleX: 0.2 + 0.8 * enter,
+          opacity: enter,
+        })
+      }
+    }
+
+    if (id === 2) {
+      const typed = section.querySelector('[data-typewriter]')
+      if (typed) {
+        const full = typed.dataset.text ?? ''
+        typed.textContent = typedSlice(full, clamp01(enter / 0.75))
+      }
+      const signal = section.querySelector('[data-signal]')
+      if (signal) {
+        gsap.set(signal, {
+          xPercent: enter * 100,
+          opacity: enter > 0.02 && enter < 0.9 ? 1 : 0,
+        })
+      }
+    }
+
+    if (id === 3) {
+      const reply = section.querySelector('[data-reply]')
+      if (reply) {
+        gsap.set(reply, {
+          opacity: clamp01((enter - 0.25) / 0.35),
+          y: (1 - clamp01((enter - 0.25) / 0.35)) * 8,
+        })
+      }
+    }
+  }
+
   // Stacking only makes sense once this script can also drive the
   // un-stacking, so the `.motion` class — and the pinning it implies — are
   // both added here, together, rather than the class living unconditionally
@@ -83,11 +126,15 @@ export async function initTimeline({ root, onProgress = () => {}, mq } = {}) {
       })
 
       // Every section gets a live value: the current act's local progress,
-      // '1.000' for acts already scrolled past, '0.000' for acts not yet
-      // reached — so nothing keeps a stale reading from an earlier scrub.
-      if (distance === 0) section.dataset.enter = localProgress(progress).toFixed(3)
-      else if (distance < 0) section.dataset.enter = '1.000'
-      else section.dataset.enter = '0.000'
+      // 1 for acts already scrolled past, 0 for acts not yet reached — so
+      // nothing keeps a stale reading from an earlier scrub. `paintAct`
+      // receives exactly this same effective value for every section (not
+      // just the current act), so a passed act's typewriter holds the full
+      // text and a future act's holds empty — no boundary crossing ever
+      // shows a stale state.
+      const effectiveEnter = distance === 0 ? localProgress(progress) : distance < 0 ? 1 : 0
+      section.dataset.enter = effectiveEnter.toFixed(3)
+      paintAct(section, id, effectiveEnter)
     }
 
     onProgress(progress)

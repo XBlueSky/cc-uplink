@@ -16,7 +16,11 @@ import Pane from '../Pane.astro'
     </p>
   </div>
   <Pane title="tmux:%3 — codex" active={true}>
-    <pre tabindex="0" role="region" aria-label="tmux pane contents: an uplink envelope with the reply command"><code>[uplink from:claude pane:%1 id:6b3b20e6] review my diff (reply: run `tmux send-keys -t %1 -l '[reply id:6b3b20e6] &lt;your answer&gt;' \; send-keys -t %1 Enter`)</code></pre>
+    <pre tabindex="0" role="region" aria-label="tmux pane contents: an uplink envelope with the reply command"><code
+      data-typewriter
+      data-text={"[uplink from:claude pane:%1 id:6b3b20e6] review my diff (reply: run `tmux send-keys -t %1 -l '[reply id:6b3b20e6] <your answer>' \\; send-keys -t %1 Enter`)"}
+    >[uplink from:claude pane:%1 id:6b3b20e6] review my diff (reply: run `tmux send-keys -t %1 -l '[reply id:6b3b20e6] &lt;your answer&gt;' \; send-keys -t %1 Enter`)</code></pre>
+    <span class="signal" data-signal aria-hidden="true"></span>
   </Pane>
 </section>
 
@@ -39,4 +43,16 @@ import Pane from '../Pane.astro'
   h2 { font-size: var(--step-2); line-height: 1.1; margin: 0 0 var(--space-m); }
   .copy p { color: var(--fg-dim); max-width: 44ch; }
   pre { margin: 0; overflow-x: auto; }
+  .signal {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 2px;
+    height: 100%;
+    /* The signal is the one place the brand's warm amber appears in the page
+       body: the message crossing the cold field. Palette decision 2026-07-29. */
+    background: linear-gradient(180deg, transparent, var(--signal), transparent);
+    opacity: 0;
+    will-change: transform, opacity;
+  }
 </style>

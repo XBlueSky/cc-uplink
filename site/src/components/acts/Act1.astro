@@ -13,9 +13,11 @@ import Pane from '../Pane.astro'
     <Pane title="$ claude" active={true}>
       <p>&gt; ask codex to review my diff</p>
     </Pane>
-    <Pane title="tmux:%3 — codex">
-      <p>&gt; <span class="dim">idle</span></p>
-    </Pane>
+    <div data-split-target>
+      <Pane title="tmux:%3 — codex">
+        <p>&gt; <span class="dim">idle</span></p>
+      </Pane>
+    </div>
   </div>
 </section>
 
@@ -37,4 +39,5 @@ import Pane from '../Pane.astro'
   .split { display: grid; gap: var(--space-s); }
   @media (min-width: 640px) { .split { grid-template-columns: 1fr 1fr; } }
   .dim { color: var(--fg-dim); }
+  [data-split-target] { transform-origin: left center; will-change: transform, opacity; }
 </style>
