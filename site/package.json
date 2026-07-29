@@ -2,7 +2,9 @@
   "name": "cc-uplink-site",
   "private": true,
   "type": "module",
-  "engines": { "node": ">=22.12.0" },
+  "engines": {
+    "node": ">=22.12.0"
+  },
   "scripts": {
     "sync": "node scripts/sync-content.mjs",
     "dev": "npm run sync && astro dev",
@@ -12,6 +14,8 @@
     "test:ci": "node --test --test-reporter=tap 'test/**/*.test.mjs'"
   },
   "dependencies": {
-    "astro": "^7"
+    "astro": "^7",
+    "gsap": "^3.15.0",
+    "lenis": "^1.3.25"
   }
 }
