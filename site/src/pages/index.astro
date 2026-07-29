@@ -1,6 +1,11 @@
 ---
 import Base from '../layouts/Base.astro'
+import StatusLine from '../components/StatusLine.astro'
+import Pane from '../components/Pane.astro'
 ---
 <Base title="cc-uplink" description="Placeholder.">
-  <h1>cc-uplink</h1>
+  <StatusLine current="home" />
+  <Pane title="$ claude" active={true}>
+    <p>&gt; ask codex in the other pane to review my diff</p>
+  </Pane>
 </Base>
