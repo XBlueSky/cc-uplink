@@ -1,9 +1,14 @@
+#ifdef GL_FRAGMENT_PRECISION_HIGH
 precision highp float;
+#else
+precision mediump float;
+#endif
 
 uniform vec2 uResolution;
 uniform float uTime;
 uniform float uProgress;
 uniform float uLumCeiling;
+uniform float uPixelScale;
 
 float hash(vec2 p) {
   return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
@@ -35,8 +40,10 @@ void main() {
   vec2 uv = gl_FragCoord.xy / uResolution;
   vec2 aspect = vec2(uResolution.x / uResolution.y, 1.0);
 
-  // The diagonal runs lower-left to upper-right at the same slope as the
-  // CSS fallback gradient (62deg), so switching renderers does not move it.
+  // The diagonal runs lower-left to upper-right. The CSS fallback gradient
+  // in Ambience.astro is 148deg to match this same slope — a 62deg
+  // linear-gradient renders the mirrored stripe, so the two are reconciled
+  // at 148deg, not 62deg (CSS 148deg ≙ this shader's dir = normalize(1.0, 0.62)).
   vec2 dir = normalize(vec2(1.0, 0.62));
   vec2 rel = (uv - vec2(0.15, 0.10)) * aspect;
   float along = dot(rel, dir);
@@ -53,8 +60,12 @@ void main() {
 
   float haze = fbm(uv * 3.0 + vec2(0.0, uTime * 0.01)) * 0.06;
 
-  // Scanline modulation, from ambience reference A.
-  float scan = 0.5 + 0.5 * sin(gl_FragCoord.y * 3.14159265);
+  // Scanline modulation, from ambience reference A. Divided by uPixelScale
+  // (the effective dpr * mobile-scale used to size the drawing buffer) so
+  // the period is stable in CSS pixels; without it, the MAX_DPR cap and the
+  // sub-700px 0.75 scale each make the buffer:display ratio non-integer,
+  // and the scanline beats against the buffer grid instead of the screen.
+  float scan = 0.5 + 0.5 * sin(gl_FragCoord.y / uPixelScale * 3.14159265);
 
   vec3 base = vec3(0.024, 0.027, 0.047);
   vec3 indigo = vec3(0.180, 0.247, 0.490);
@@ -68,7 +79,10 @@ void main() {
 
   // Hard ceiling on relative luminance so body text keeps WCAG AA against
   // the brightest state this shader can reach. uLumCeiling is derived from
-  // WCAG in contrast.mjs and unit-tested there.
+  // WCAG in contrast.mjs and unit-tested there. The current palette's
+  // analytic peak sits at ~61% of uLumCeiling, so this clamp is inactive
+  // today — it is a safety net for future palette or intensity changes,
+  // not an active constraint.
   vec3 linear = pow(max(col, 0.0), vec3(2.2));
   float lum = dot(linear, vec3(0.2126, 0.7152, 0.0722));
   if (lum > uLumCeiling) {

@@ -8,10 +8,28 @@ void main() { gl_Position = vec4(aPosition, 0.0, 1.0); }
 
 const MAX_DPR = 1.5
 
+// Shared by pickRenderer's probe calls and initAmbience's real context: per
+// the WebGL spec, only the FIRST getContext() call on a canvas actually
+// creates the context — every later call (even with different attributes)
+// just returns the same context, silently ignoring what it was passed. If
+// the probe and the real acquisition disagreed, the probe's attributes
+// (implicitly the defaults) would win and antialias/alpha/powerPreference
+// below would be discarded.
+const CONTEXT_ATTRS = { antialias: false, alpha: false, powerPreference: 'low-power' }
+
+/**
+ * Picks a renderer for `canvas` by probing WebGL2 then WebGL1.
+ *
+ * Side effect: this permanently allocates a GL context on `canvas`. A
+ * canvas can only ever be bound to one context, so whichever mode this
+ * returns is also the context `initAmbience` receives back from its own
+ * `getContext` call — which is why both call sites must pass the same
+ * `CONTEXT_ATTRS`.
+ */
 export function pickRenderer(canvas) {
   try {
-    if (canvas.getContext('webgl2')) return 'webgl2'
-    if (canvas.getContext('webgl')) return 'webgl'
+    if (canvas.getContext('webgl2', CONTEXT_ATTRS)) return 'webgl2'
+    if (canvas.getContext('webgl', CONTEXT_ATTRS)) return 'webgl'
   } catch {
     return 'css'
   }
@@ -40,91 +58,169 @@ export function initAmbience({ canvas, reducedMotion }) {
     return { setProgress() {}, destroy() {} }
   }
 
-  const gl = canvas.getContext(mode === 'webgl2' ? 'webgl2' : 'webgl', {
-    antialias: false,
-    alpha: false,
-    powerPreference: 'low-power',
-  })
+  const gl = canvas.getContext(mode === 'webgl2' ? 'webgl2' : 'webgl', CONTEXT_ATTRS)
 
-  let program
-  try {
-    program = gl.createProgram()
-    gl.attachShader(program, compile(gl, gl.VERTEX_SHADER, VERTEX_SOURCE))
-    gl.attachShader(program, compile(gl, gl.FRAGMENT_SHADER, fragmentSource))
-    gl.linkProgram(program)
-    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
-      throw new Error(gl.getProgramInfoLog(program) ?? 'link failed')
-    }
-  } catch (error) {
-    // A compile or link failure must fall back, not throw into the page.
-    console.warn('[ambience] falling back to the CSS gradient:', error.message)
-    return { setProgress() {}, destroy() {} }
-  }
-
-  gl.useProgram(program)
-
-  const buffer = gl.createBuffer()
-  gl.bindBuffer(gl.ARRAY_BUFFER, buffer)
-  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW)
-  const aPosition = gl.getAttribLocation(program, 'aPosition')
-  gl.enableVertexAttribArray(aPosition)
-  gl.vertexAttribPointer(aPosition, 2, gl.FLOAT, false, 0, 0)
-
-  const uResolution = gl.getUniformLocation(program, 'uResolution')
-  const uTime = gl.getUniformLocation(program, 'uTime')
-  const uProgress = gl.getUniformLocation(program, 'uProgress')
-  const uLumCeiling = gl.getUniformLocation(program, 'uLumCeiling')
-  gl.uniform1f(uLumCeiling, LUM_CEILING)
+  let program = null
+  let buffer = null
+  let uResolution = null
+  let uTime = null
+  let uProgress = null
+  let uLumCeiling = null
+  let uPixelScale = null
 
   let progress = 0
   let frame = 0
+  let resizeFrame = 0
   let visible = true
   let disposed = false
 
   function resize() {
     const dpr = Math.min(window.devicePixelRatio || 1, MAX_DPR)
     const scale = window.innerWidth < 700 ? 0.75 : 1
-    const width = Math.max(1, Math.floor(canvas.clientWidth * dpr * scale))
-    const height = Math.max(1, Math.floor(canvas.clientHeight * dpr * scale))
+    const pixelScale = dpr * scale
+    const width = Math.max(1, Math.floor(canvas.clientWidth * pixelScale))
+    const height = Math.max(1, Math.floor(canvas.clientHeight * pixelScale))
     if (canvas.width !== width || canvas.height !== height) {
       canvas.width = width
       canvas.height = height
     }
     gl.viewport(0, 0, canvas.width, canvas.height)
     gl.uniform2f(uResolution, canvas.width, canvas.height)
+    // Lets the shader hold the scanline's period constant in CSS pixels —
+    // see the comment on `scan` in ambience.frag.
+    gl.uniform1f(uPixelScale, pixelScale)
+  }
+
+  // Builds (or, after a context-loss round trip, rebuilds) every GL object
+  // this module owns. Split out of the top-level function body so
+  // `webglcontextrestored` can re-run exactly this and nothing else — a
+  // restored context is a *new* context object underneath the same `gl`
+  // reference, with none of the previous program/buffer/uniform state.
+  function setup() {
+    const vs = compile(gl, gl.VERTEX_SHADER, VERTEX_SOURCE)
+    const fs = compile(gl, gl.FRAGMENT_SHADER, fragmentSource)
+    program = gl.createProgram()
+    gl.attachShader(program, vs)
+    gl.attachShader(program, fs)
+    gl.linkProgram(program)
+    // Flag both for deletion now: GL keeps a shader alive only while it
+    // stays attached to a program, so these are actually freed the moment
+    // destroy() (or the next setup()) deletes `program` — no need to hold
+    // separate shader refs until then.
+    gl.deleteShader(vs)
+    gl.deleteShader(fs)
+    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+      throw new Error(gl.getProgramInfoLog(program) || 'link failed')
+    }
+
+    gl.useProgram(program)
+
+    buffer = gl.createBuffer()
+    gl.bindBuffer(gl.ARRAY_BUFFER, buffer)
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW)
+    const aPosition = gl.getAttribLocation(program, 'aPosition')
+    gl.enableVertexAttribArray(aPosition)
+    gl.vertexAttribPointer(aPosition, 2, gl.FLOAT, false, 0, 0)
+
+    uResolution = gl.getUniformLocation(program, 'uResolution')
+    uTime = gl.getUniformLocation(program, 'uTime')
+    uProgress = gl.getUniformLocation(program, 'uProgress')
+    uLumCeiling = gl.getUniformLocation(program, 'uLumCeiling')
+    uPixelScale = gl.getUniformLocation(program, 'uPixelScale')
+    gl.uniform1f(uLumCeiling, LUM_CEILING)
+
+    resize()
+  }
+
+  try {
+    setup()
+  } catch (error) {
+    // A compile or link failure must fall back, not throw into the page.
+    console.warn('[ambience] falling back to the CSS gradient:', error.message)
+    return { setProgress() {}, destroy() {} }
   }
 
   function draw(timeMs) {
-    gl.uniform1f(uTime, reducedMotion ? 0 : timeMs / 1000)
+    // Wrapped rather than raw ms/1000: sin()'s precision decays on very
+    // large arguments, which would freeze the fbm grain/drift on a tab left
+    // open for ~10+ hours. Wrapping at 3600s costs one visible texture
+    // reseed per hour in exchange for grain that never dies.
+    gl.uniform1f(uTime, reducedMotion ? 0 : (timeMs / 1000) % 3600)
     gl.uniform1f(uProgress, progress)
     gl.drawArrays(gl.TRIANGLES, 0, 3)
     canvas.dataset.ready = 'true'
   }
 
-  function loop(timeMs) {
-    if (disposed) return
-    draw(timeMs)
-    if (visible) frame = requestAnimationFrame(loop)
+  // The one and only place a new frame gets requested. Every call site —
+  // the initial kick, the loop's own continuation, the IntersectionObserver
+  // callback, and context-restore — funnels through this same guard, so at
+  // most one rAF chain is ever in flight. Without `!frame` here, the
+  // IntersectionObserver's mandatory initial notification (which fires
+  // shortly after `observe()` regardless of whether visibility actually
+  // changed) schedules a second permanent chain on every load.
+  function scheduleLoop() {
+    if (visible && !reducedMotion && !disposed && !frame) frame = requestAnimationFrame(loop)
   }
 
-  resize()
+  function loop(timeMs) {
+    frame = 0
+    if (disposed) return
+    draw(timeMs)
+    scheduleLoop()
+  }
 
   if (reducedMotion) {
     // Exactly one frame, then nothing. No rAF loop at all.
     draw(0)
   } else {
-    frame = requestAnimationFrame(loop)
+    scheduleLoop()
   }
 
   const onResize = () => {
-    resize()
-    if (reducedMotion) draw(0)
+    // Trailing-rAF debounce: a resize storm (drag-resizing a window,
+    // rotating a device) collapses to one buffer reallocation per animation
+    // frame instead of one per event.
+    if (resizeFrame) return
+    resizeFrame = requestAnimationFrame(() => {
+      resizeFrame = 0
+      resize()
+      if (reducedMotion) draw(0)
+    })
   }
   window.addEventListener('resize', onResize, { passive: true })
 
+  function onContextLost(event) {
+    // Without preventDefault(), the browser never fires
+    // webglcontextrestored and the canvas stays dead permanently.
+    event.preventDefault()
+    cancelAnimationFrame(frame)
+    frame = 0
+    // Dropping data-ready lets the canvas's own 400ms opacity transition
+    // (Ambience.astro) hand the view back to the CSS gradient instead of
+    // leaving a frozen frame from the dead context on top of it.
+    delete canvas.dataset.ready
+  }
+
+  function onContextRestored() {
+    try {
+      setup()
+    } catch (error) {
+      console.warn('[ambience] failed to restore after context loss:', error.message)
+      return
+    }
+    if (reducedMotion) {
+      draw(0)
+    } else {
+      scheduleLoop()
+    }
+  }
+
+  canvas.addEventListener('webglcontextlost', onContextLost, false)
+  canvas.addEventListener('webglcontextrestored', onContextRestored, false)
+
   const observer = new IntersectionObserver(([entry]) => {
     visible = entry.isIntersecting
-    if (visible && !reducedMotion && !disposed) frame = requestAnimationFrame(loop)
+    scheduleLoop()
   })
   observer.observe(canvas)
 
@@ -140,8 +236,15 @@ export function initAmbience({ canvas, reducedMotion }) {
     destroy() {
       disposed = true
       cancelAnimationFrame(frame)
+      cancelAnimationFrame(resizeFrame)
       window.removeEventListener('resize', onResize)
+      canvas.removeEventListener('webglcontextlost', onContextLost)
+      canvas.removeEventListener('webglcontextrestored', onContextRestored)
       observer.disconnect()
+      gl.deleteProgram(program)
+      gl.deleteBuffer(buffer)
+      delete canvas.dataset.ready
+      gl.getExtension('WEBGL_lose_context')?.loseContext()
     },
   }
 }
