@@ -1,0 +1,75 @@
+name: Site
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'site/**'
+      - 'docs/*.md'
+      - '.cc-marketspec/**'
+      - '.claude-plugin/**'
+      - 'plugins/**'
+      - '.github/workflows/site.yml'
+  pull_request:
+    paths:
+      - 'site/**'
+      - 'docs/*.md'
+      - '.cc-marketspec/**'
+      - '.claude-plugin/**'
+      - 'plugins/**'
+      - '.github/workflows/site.yml'
+  workflow_dispatch:
+  workflow_run:
+    workflows: [Release]
+    types: [completed]
+
+concurrency:
+  group: site-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  deployments: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: site/package-lock.json
+
+      - name: Validate the marketplace before building anything from it
+        run: npx @xbluesky/cc-marketspec@latest --check
+
+      - run: npm --prefix site ci
+
+      - run: npm --prefix site run build
+
+      - name: Test (includes the guard against publishing internal docs)
+        run: |
+          set -eo pipefail
+          npm --prefix site run test:ci 2>&1 | tee /tmp/site-test.log
+          # `node --test` exits 0 when its glob matches nothing, so a broken
+          # glob would turn this gate green while running zero tests. Assert
+          # the counts instead of trusting the exit code.
+          grep -qE '^# pass [1-9]' /tmp/site-test.log \
+            || { echo "::error::the site test suite ran zero tests — the glob matched nothing"; exit 1; }
+          if grep -qE '^# skipped [1-9]' /tmp/site-test.log; then
+            echo "::error::tests were skipped; the dist-dependent suites must run after a build"
+            exit 1
+          fi
+
+      - name: Deploy
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: >-
+            pages deploy site/dist
+            --project-name=cc-uplink
+            --branch=${{ github.head_ref || github.ref_name }}
