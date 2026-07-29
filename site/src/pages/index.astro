@@ -1,5 +1,6 @@
 ---
 import Base from '../layouts/Base.astro'
+import Ambience from '../components/Ambience.astro'
 import StatusLine from '../components/StatusLine.astro'
 import Act0 from '../components/acts/Act0.astro'
 import Act1 from '../components/acts/Act1.astro'
@@ -60,6 +61,7 @@ if (!fetchedRelease) {
 const release = resolveRelease(fetchedRelease, manifest.version, repoSlug || undefined)
 ---
 <Base title={`cc-uplink — ${manifest.tagline}`} description={manifest.description}>
+  <Ambience />
   <StatusLine current="home" />
   <Act0
     tagline={manifest.tagline}
