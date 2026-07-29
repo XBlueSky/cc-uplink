@@ -1,0 +1,32 @@
+---
+const { title, active = false } = Astro.props
+---
+<section class="pane" data-pane data-active={active ? 'true' : 'false'}>
+  {title && <header class="pane-title">{title}</header>}
+  <div class="pane-body"><slot /></div>
+</section>
+
+<style>
+  .pane {
+    border: 1px solid var(--pane-border);
+    background: color-mix(in srgb, var(--bg-raised) 70%, transparent);
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+  .pane[data-active='true'] { border-color: var(--accent-dim); }
+  .pane-title {
+    padding: 0.3rem var(--space-s);
+    border-bottom: 1px solid var(--pane-border);
+    font-family: var(--mono);
+    font-size: var(--step--1);
+    color: var(--fg-dim);
+  }
+  .pane-body {
+    padding: var(--space-m);
+    font-family: var(--mono);
+    font-size: var(--step--1);
+    line-height: 1.7;
+    overflow-x: auto;
+  }
+</style>

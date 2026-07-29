@@ -1,0 +1,57 @@
+---
+import Base from './Base.astro'
+import StatusLine from '../components/StatusLine.astro'
+
+const { title, slug } = Astro.props
+---
+<Base title={`${title} — cc-uplink`} description={`cc-uplink ${title}`}>
+  <StatusLine current={slug} />
+  <article class="doc">
+    <a class="back" href="/">← back to cc-uplink</a>
+    <slot />
+  </article>
+</Base>
+
+<style>
+  .doc {
+    max-width: 68ch;
+    margin: 0 auto;
+    padding: var(--space-l) var(--space-m) var(--space-xl);
+  }
+  .back {
+    display: inline-block;
+    margin-bottom: var(--space-l);
+    font-family: var(--mono);
+    font-size: var(--step--1);
+    color: var(--fg-dim);
+    text-decoration: none;
+  }
+  .back:hover { color: var(--cyan); }
+  .doc :global(h1) { font-size: var(--step-2); line-height: 1.15; margin-bottom: var(--space-m); }
+  .doc :global(h2) { font-size: var(--step-1); margin-top: var(--space-l); }
+  .doc :global(pre) {
+    padding: var(--space-m);
+    /* No `background` here: Shiki emits its own inline `background-color`
+       on every <pre> it generates (now `var(--astro-code-background)`,
+       resolving to this same --bg-raised — see tokens.css), and an inline
+       style always wins over this external rule regardless of specificity.
+       A `background` declaration here would never paint anything; keeping
+       it would misrepresent which layer actually controls this colour. */
+    border: 1px solid var(--pane-border);
+    overflow-x: auto;
+    font-size: var(--step--1);
+  }
+  .doc :global(code) { font-size: 0.95em; }
+  .doc :global(:not(pre) > code) {
+    padding: 0.1em 0.35em;
+    background: var(--bg-raised);
+    border: 1px solid var(--pane-border);
+    overflow-wrap: anywhere;
+  }
+  .doc :global(table) { width: 100%; border-collapse: collapse; font-size: var(--step--1); }
+  .doc :global(th), .doc :global(td) {
+    padding: 0.5rem 0.75rem;
+    border: 1px solid var(--pane-border);
+    text-align: left;
+  }
+</style>

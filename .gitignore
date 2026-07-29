@@ -3,3 +3,10 @@
 docs/superpowers/
 /uplink-images
 .claude/settings.local.json
+/site/node_modules
+/site/dist
+/site/.astro
+/site/src/content/docs
+/site/src/data
+# wrangler writes an account/cache directory here on any pages command
+/.wrangler

@@ -1,0 +1,22 @@
+---
+import { getCollection, render } from 'astro:content'
+import Doc from '../../layouts/Doc.astro'
+
+export async function getStaticPaths() {
+  const docs = await getCollection('docs')
+  return docs.map((entry) => ({ params: { slug: entry.id }, props: { entry } }))
+}
+
+const { entry } = Astro.props
+const { Content, headings } = await render(entry)
+
+// No frontmatter, so entry.data.title is always undefined today — kept as
+// the first fallback anyway so a future frontmatter title still wins. The
+// markdown's own H1 (correctly cased, e.g. "CLI") is the next-best source;
+// only a file with no heading at all falls through to the slug-derived
+// title.
+const title = entry.data.title ?? headings[0]?.text ?? entry.id.replace(/-/g, ' ')
+---
+<Doc title={title} slug={entry.id}>
+  <Content />
+</Doc>

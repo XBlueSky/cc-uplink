@@ -1,0 +1,76 @@
+:root {
+  --bg: #06070c;
+  --bg-raised: #0a0c14;
+  --fg: #e6e9f0;
+  --fg-dim: #8b93a7;
+  --accent: #5b7cfa;
+  --accent-dim: #2e3f7d;
+  --cyan: #58c5d4;
+  --pane-border: #1c2130;
+
+  --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace;
+  --sans: -apple-system, BlinkMacSystemFont, "Inter", system-ui, sans-serif;
+
+  --step--1: clamp(0.83rem, 0.8rem + 0.15vw, 0.9rem);
+  --step-0: clamp(1rem, 0.96rem + 0.2vw, 1.13rem);
+  --step-1: clamp(1.35rem, 1.2rem + 0.7vw, 1.8rem);
+  --step-2: clamp(1.9rem, 1.5rem + 1.8vw, 3rem);
+  --step-3: clamp(2.6rem, 1.8rem + 3.6vw, 5rem);
+
+  --space-s: 0.75rem;
+  --space-m: 1.5rem;
+  --space-l: 3rem;
+  --space-xl: 6rem;
+
+  /*
+   * Shiki (astro.config.mjs's `markdown.shikiConfig.theme: 'css-variables'`)
+   * paints docs code blocks with these instead of a bundled theme's
+   * hardcoded hex, so syntax-highlighted code uses this site's own palette
+   * and can be measured against the background it actually renders on
+   * (--bg-raised, same as Doc.astro's `.doc pre`). Every one of these is
+   * >=4.5:1 (WCAG AA) against --bg-raised — verified in
+   * site/test/contrast.test.mjs, not eyeballed. Where an existing token
+   * already cleared the floor it is reused rather than duplicated (comment,
+   * keyword, string all point at --fg-dim/--accent/--cyan); constant,
+   * function, inserted, and deleted have no existing equivalent so are
+   * defined here specifically for code, chosen from the same cool-with-one-
+   * warm-accent family as the rest of the palette.
+   */
+  --astro-code-foreground: var(--fg);
+  --astro-code-background: var(--bg-raised);
+  --astro-code-token-comment: var(--fg-dim);
+  --astro-code-token-keyword: var(--accent);
+  --astro-code-token-string: var(--cyan);
+  --astro-code-token-string-expression: var(--cyan);
+  --astro-code-token-parameter: var(--cyan);
+  --astro-code-token-link: var(--cyan);
+  --astro-code-token-punctuation: var(--fg-dim);
+  --astro-code-token-constant: #e0a458;
+  --astro-code-token-function: #b98bd6;
+  --astro-code-token-inserted: #7ec699;
+  --astro-code-token-deleted: #e0807f;
+  --astro-code-token-changed: #e0a458;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html { color-scheme: dark; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--sans);
+  font-size: var(--step-0);
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+code, pre, .mono { font-family: var(--mono); }
+
+a { color: var(--cyan); }
+
+:focus-visible {
+  outline: 2px solid var(--cyan);
+  outline-offset: 2px;
+}

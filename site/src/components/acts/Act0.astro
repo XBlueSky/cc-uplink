@@ -1,0 +1,64 @@
+---
+import Pane from '../Pane.astro'
+
+const { tagline, intro, release, repo, pluginName, marketplaceName } = Astro.props
+// `plugin@marketplace`'s second half names the marketplace entry, which is
+// not necessarily the plugin's own name — `parseManifest` now reads it from
+// the manifest's top-level `marketplace.name`. Falls back to `pluginName`
+// only if the manifest ever omits it (same nullable-field guard as `repo`
+// below), so a missing marketplace name degrades to today's behaviour
+// instead of rendering a literal `undefined`.
+const marketplaceSlug = marketplaceName ?? pluginName
+---
+<section class="act" data-act="0" aria-labelledby="act0-heading">
+  <div class="copy">
+    <h1 id="act0-heading">{tagline}</h1>
+    <p class="intro">{intro}</p>
+    <div class="install">
+      <pre><code>/plugin marketplace add {repo}
+/plugin install {pluginName}@{marketplaceSlug}</code></pre>
+      <p class="meta">
+        <a href={release.url}>{release.tag}</a> · one static Rust binary · MIT
+      </p>
+    </div>
+  </div>
+  <Pane title="$ claude" active={true}>
+    <p>&gt; <span class="dim">waiting</span><span class="caret" aria-hidden="true">▊</span></p>
+  </Pane>
+</section>
+
+<style>
+  .act {
+    display: grid;
+    gap: var(--space-l);
+    grid-template-columns: 1fr;
+    align-items: center;
+    padding: var(--space-xl) var(--space-m);
+    max-width: 1200px;
+    margin: 0 auto;
+  }
+  @media (min-width: 900px) { .act { grid-template-columns: 1.1fr 1fr; } }
+  /*
+   * Grid items default to `min-width: auto`, which floors their size at
+   * their content's min-content width. The install `<pre>` below contains an
+   * unbreakable command line; without this, its min-content forces the
+   * shared grid column (and the page) wider than the viewport even though
+   * the `<pre>` itself has `overflow-x: auto` — that only stops *its own*
+   * automatic-minimum-size contribution, not its ancestor `.copy`'s.
+   */
+  .copy { min-width: 0; }
+  h1 { font-size: var(--step-3); line-height: 1.05; margin: 0 0 var(--space-m); letter-spacing: -0.02em; }
+  .intro { color: var(--fg-dim); max-width: 46ch; font-size: var(--step-1); line-height: 1.5; }
+  .install { margin-top: var(--space-l); }
+  .install pre {
+    padding: var(--space-m);
+    background: var(--bg-raised);
+    border: 1px solid var(--pane-border);
+    font-family: var(--mono);
+    font-size: var(--step--1);
+    overflow-x: auto;
+  }
+  .meta { font-family: var(--mono); font-size: var(--step--1); color: var(--fg-dim); }
+  .dim { color: var(--fg-dim); }
+  .caret { color: var(--cyan); }
+</style>

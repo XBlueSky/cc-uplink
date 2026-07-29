@@ -1,0 +1,61 @@
+---
+const { tools } = Astro.props
+
+const drivers = ['tmux', 'image:openai', 'image:codex', '…the next one']
+---
+<section class="act" data-act="5" aria-labelledby="act5-heading">
+  <h2 id="act5-heading">Adding a driver adds zero tools</h2>
+  <p class="lede">
+    Drivers plug in underneath a fixed surface. However many ways Claude can
+    reach the outside world, the tool listing stays exactly this long.
+  </p>
+  <div class="diagram">
+    <ul class="tools" aria-label="The six fixed tools">
+      {tools.map((tool) => <li>{tool}</li>)}
+    </ul>
+    <p class="rule"><span aria-hidden="true">▲</span> fixed surface — 6 tools</p>
+    <ul class="drivers" aria-label="Drivers">
+      {drivers.map((driver) => <li>{driver}</li>)}
+    </ul>
+  </div>
+</section>
+
+<style>
+  .act {
+    padding: var(--space-xl) var(--space-m);
+    max-width: 900px;
+    margin: 0 auto;
+    text-align: center;
+  }
+  h2 { font-size: var(--step-2); line-height: 1.1; margin: 0 0 var(--space-m); }
+  .lede { color: var(--fg-dim); max-width: 52ch; margin: 0 auto var(--space-l); }
+  /* .diagram is intentionally unstyled: it's a motion-plan hook for grouping
+     the tools/rule/drivers block as a single transform target later. */
+  .tools, .drivers {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: var(--space-s);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    font-family: var(--mono);
+    font-size: var(--step--1);
+  }
+  .tools li {
+    padding: calc(var(--space-s) / 2) var(--space-s);
+    border: 1px solid var(--accent-dim);
+    color: var(--fg);
+  }
+  .drivers li {
+    padding: calc(var(--space-s) / 2) var(--space-s);
+    color: var(--fg-dim);
+    border: 1px dashed var(--pane-border);
+  }
+  .rule {
+    font-family: var(--mono);
+    font-size: var(--step--1);
+    color: var(--fg-dim);
+    margin: var(--space-m) 0;
+  }
+</style>

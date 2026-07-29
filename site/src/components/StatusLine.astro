@@ -1,0 +1,50 @@
+---
+const { current } = Astro.props
+
+const windows = [
+  { id: 'home', label: 'home', href: '/' },
+  { id: 'wire-contract', label: 'wire', href: '/docs/wire-contract' },
+  { id: 'downstream-contracts', label: 'downstream', href: '/docs/downstream-contracts' },
+  { id: 'configuration', label: 'config', href: '/docs/configuration' },
+  { id: 'cli', label: 'cli', href: '/docs/cli' },
+  { id: 'security', label: 'security', href: '/docs/security' },
+]
+---
+<nav class="status" aria-label="Site navigation">
+  <span class="session">[cc-uplink]</span>
+  <ul>
+    {windows.map((w, i) => (
+      <li>
+        <a href={w.href} aria-current={current === w.id ? 'page' : undefined}>
+          {i}:{w.label}{current === w.id ? '*' : ''}
+        </a>
+      </li>
+    ))}
+  </ul>
+</nav>
+
+<style>
+  .status {
+    display: flex;
+    align-items: center;
+    gap: var(--space-m);
+    padding: 0.4rem var(--space-m);
+    background: var(--bg-raised);
+    border-bottom: 1px solid var(--pane-border);
+    font-family: var(--mono);
+    font-size: var(--step--1);
+    overflow-x: auto;
+  }
+  .session { color: var(--cyan); flex: none; }
+  ul {
+    display: flex;
+    gap: var(--space-m);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  li { flex: none; }
+  a { color: var(--fg-dim); text-decoration: none; white-space: nowrap; }
+  a:hover { color: var(--fg); }
+  a[aria-current='page'] { color: var(--fg); }
+</style>

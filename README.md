@@ -80,42 +80,20 @@ environment; a one-shot CLI fallback covers older tmux), `OPENAI_API_KEY` for
 
 ## Configuration
 
-`~/.config/cc-uplink/config.toml` (all optional):
-
-```toml
-[drivers.tmux]
-enabled = true
-# allowlist = ["%1", "codex"]     # optional send-target allowlist
-
-[drivers.image-openai]
-enabled = true
-api_key_env = "OPENAI_API_KEY"    # names the variable; the key itself is env-only
-model = "gpt-image-1"
-
-[drivers.image-codex]
-enabled = true
-codex_bin = "codex"
-```
+Optional `~/.config/cc-uplink/config.toml` enables/disables drivers and names
+the env var holding the OpenAI key. Full reference:
+[docs/configuration.md](docs/configuration.md).
 
 ## CLI
 
-Same binary, same drivers, no LLM required:
-
-```bash
-cc-uplink doctor                       # diagnostics, CI-friendly exit code
-cc-uplink send tmux:codex "hello"      # full mechanized send cycle
-cc-uplink invoke image:openai generate '{"prompt":"a lighthouse"}'
-cc-uplink log --follow                 # correlation-id-threaded conversation log
-```
+The same binary drives every channel with no LLM involved — `doctor`, `send`,
+`invoke`, `log --follow`. Full reference: [docs/cli.md](docs/cli.md).
 
 ## Security posture
 
-- argv vectors only — prompts/messages/paths are never shell text
-- refuses to send to its own pane (loop prevention); optional allowlists
-- secrets are env-only; config names variables, never values
-- injected envelopes are visible plaintext in panes **by design** — human
-  observability is a feature; don't put secrets in messages
-- send verification never auto-retries; failures return capture evidence
+argv vectors only, env-only secrets, no auto-retry on send verification, and
+injected envelopes are visible plaintext by design. Full posture:
+[docs/security.md](docs/security.md).
 
 ## Development
 

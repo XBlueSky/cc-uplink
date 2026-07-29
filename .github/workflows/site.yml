@@ -1,0 +1,136 @@
+# Gate the website build on every PR and push to main. Build or test failure
+# blocks merge — a broken build means the manifest, the docs, or the acts have
+# something the site can't render, and the dist guards are what prove no
+# internal spec reached the public output.
+#
+# Deploy is NOT here: Cloudflare Pages' Git integration owns deploy, matching
+# how cc-marketspec's site.yml is split. The two-stage build needs no special
+# handling either way — `npm run build` runs `sync` (which generates the
+# manifest) before `astro build`, so the Git integration's single build command
+# covers it.
+#
+# The one thing the Git integration cannot do is rebuild when a release is
+# published, which matters because the landing page bakes in the latest release
+# tag and its download links. The release-triggered job below pokes a Pages
+# deploy hook to cover that.
+#
+# Because deploy lives entirely in the Cloudflare Pages dashboard and not in
+# this file, nothing else in the repo records what that project must be
+# configured with. If it is ever recreated (or someone needs to check why it
+# broke), set:
+#   Root directory:         site
+#   Build command:          npm run build
+#   Build output directory: dist
+#   Environment variable:   NODE_VERSION = 22
+#     Astro 7 requires Node >= 22.12 (see site/package.json's `engines`), but
+#     Pages' default builder image is older and does not read the repo-root
+#     `.nvmrc` when "Root directory" is set to `site` (it only looks for a
+#     version file inside that root). Setting NODE_VERSION explicitly is what
+#     actually pins the builder; `.nvmrc` only covers local `nvm use`.
+# A dashboard setting nobody wrote down is how sites break silently six
+# months later — this comment is that record.
+name: Site
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'site/**'
+      - 'docs/*.md'
+      - '.cc-marketspec/**'
+      - '.claude-plugin/**'
+      - 'plugins/**'
+      - '.github/workflows/site.yml'
+  pull_request:
+    paths:
+      - 'site/**'
+      - 'docs/*.md'
+      - '.cc-marketspec/**'
+      - '.claude-plugin/**'
+      - 'plugins/**'
+      - '.github/workflows/site.yml'
+  workflow_dispatch:
+  workflow_run:
+    workflows: [Release]
+    types: [completed]
+
+concurrency:
+  group: site-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    # A release does not change the source, so re-running the whole gate on the
+    # Release workflow's completion would just double CI cost. The rebuild that
+    # a release does need is the Pages one, below.
+    if: github.event_name != 'workflow_run'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: site/package-lock.json
+
+      - name: Validate the marketplace before building anything from it
+        run: npx @xbluesky/cc-marketspec@latest --check
+
+      - run: npm --prefix site ci
+
+      - run: npm --prefix site run build
+
+      - name: Test (includes the guard against publishing internal docs)
+        run: |
+          set -eo pipefail
+          npm --prefix site run test:ci 2>&1 | tee /tmp/site-test.log
+          # `node --test` exits 0 when its glob matches nothing, so a broken
+          # glob would turn this gate green while running zero tests. Assert
+          # the counts instead of trusting the exit code.
+          grep -qE '^# pass [1-9]' /tmp/site-test.log \
+            || { echo "::error::the site test suite ran zero tests — the glob matched nothing"; exit 1; }
+          if grep -qE '^# skipped [1-9]' /tmp/site-test.log; then
+            echo "::error::tests were skipped; the dist-dependent suites must run after a build"
+            exit 1
+          fi
+
+      - name: Verify the build produced the pages we expect
+        run: |
+          set -eu
+          test -f site/dist/index.html
+          for slug in cli configuration downstream-contracts security wire-contract; do
+            test -f "site/dist/docs/$slug/index.html"
+          done
+
+  # Publishing a release changes the version and download links the landing page
+  # baked in at build time, so the site needs rebuilding. Cloudflare's Git
+  # integration only builds on push, hence the deploy hook.
+  #
+  # This job is skipped when CC_PAGES_DEPLOY_HOOK is unset, so the workflow stays
+  # green for a fork or before the hook is configured. Create the hook in the
+  # Pages project (Settings → Builds & deployments → Deploy hooks, branch main)
+  # and store its URL as a repository secret.
+  refresh-after-release:
+    if: github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Trigger a Pages rebuild so the release links are current
+        env:
+          HOOK: ${{ secrets.CC_PAGES_DEPLOY_HOOK }}
+        run: |
+          set -eu
+          if [ -z "${HOOK:-}" ]; then
+            echo "CC_PAGES_DEPLOY_HOOK is not set — skipping the rebuild."
+            echo "The site will still refresh on the next push to main."
+            exit 0
+          fi
+          # Fail loudly on a non-2xx: a silently-dropped rebuild means the site
+          # advertises a stale release for as long as main sits untouched.
+          curl --fail --silent --show-error -X POST "$HOOK" > /dev/null
+          echo "Pages rebuild triggered."
