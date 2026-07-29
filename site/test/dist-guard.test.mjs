@@ -46,6 +46,23 @@ test('dist docs routes match exactly the expected public set', (t) => {
   ])
 })
 
+test('dist ships a real 404 page', (t) => {
+  if (!existsSync(DIST)) return t.skip('run `npm run build` first')
+
+  // Without dist/404.html Cloudflare Pages assumes an SPA and rewrites every
+  // unknown path to /index.html with HTTP 200 — which is exactly how the
+  // "internal docs must 404 in production" check failed on 2026-07-29 (the
+  // guards had kept the content out of dist, but misses answered 200 with the
+  // landing page). This asserts the page that switches Pages back to real
+  // 404 semantics never silently disappears.
+  const html = readFileSync(join(DIST, '404.html'), 'utf8')
+  assert.ok(html.includes('no such pane'), '404.html lost its content')
+  assert.ok(
+    !/<script(?![^>]*type="application\/ld\+json")/i.test(html),
+    '404 page must ship no JavaScript',
+  )
+})
+
 test('docs pages ship no JavaScript', (t) => {
   if (!existsSync(DIST)) return t.skip('run `npm run build` first')
 

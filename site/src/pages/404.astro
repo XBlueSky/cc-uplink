@@ -1,0 +1,35 @@
+---
+import Base from '../layouts/Base.astro'
+import StatusLine from '../components/StatusLine.astro'
+import Pane from '../components/Pane.astro'
+---
+
+<!-- Without this file Cloudflare Pages assumes the site is an SPA and rewrites
+     every unknown path to /index.html with HTTP 200. Shipping dist/404.html is
+     what makes Pages answer misses with a real 404 status; dist-guard.test.mjs
+     asserts it exists so the SPA fallback can never quietly come back. -->
+<Base
+  title="404 — cc-uplink"
+  description="No such pane. The path you followed does not exist on this session."
+>
+  <StatusLine current="home" />
+  <div class="wrap">
+    <Pane title="tmux — find-window" active={true}>
+      <p><span class="err">404</span> no such pane</p>
+      <p class="dim">the path you followed doesn't exist in this session.</p>
+      <p><a href="/">switch to window 0:home</a></p>
+    </Pane>
+  </div>
+</Base>
+
+<style>
+  .wrap {
+    min-height: 70svh;
+    display: grid;
+    place-content: center;
+    padding: var(--space-xl) var(--space-m);
+  }
+  .err { color: var(--signal); }
+  .dim { color: var(--fg-dim); }
+  a { color: var(--cyan); }
+</style>
