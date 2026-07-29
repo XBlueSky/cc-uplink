@@ -11,7 +11,7 @@
     "test": "node --test 'test/**/*.test.mjs'",
     "test:ci": "node --test --test-reporter=tap 'test/**/*.test.mjs'"
   },
-  "devDependencies": {
+  "dependencies": {
     "astro": "^7"
   }
 }

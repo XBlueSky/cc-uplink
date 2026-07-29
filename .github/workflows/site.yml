@@ -13,6 +13,22 @@
 # published, which matters because the landing page bakes in the latest release
 # tag and its download links. The release-triggered job below pokes a Pages
 # deploy hook to cover that.
+#
+# Because deploy lives entirely in the Cloudflare Pages dashboard and not in
+# this file, nothing else in the repo records what that project must be
+# configured with. If it is ever recreated (or someone needs to check why it
+# broke), set:
+#   Root directory:         site
+#   Build command:          npm run build
+#   Build output directory: dist
+#   Environment variable:   NODE_VERSION = 22
+#     Astro 7 requires Node >= 22.12 (see site/package.json's `engines`), but
+#     Pages' default builder image is older and does not read the repo-root
+#     `.nvmrc` when "Root directory" is set to `site` (it only looks for a
+#     version file inside that root). Setting NODE_VERSION explicitly is what
+#     actually pins the builder; `.nvmrc` only covers local `nvm use`.
+# A dashboard setting nobody wrote down is how sites break silently six
+# months later — this comment is that record.
 name: Site
 
 on:
