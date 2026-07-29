@@ -1,0 +1,35 @@
+---
+import Pane from '../Pane.astro'
+---
+<section class="act" data-act="2" aria-labelledby="act2-heading">
+  <div class="copy">
+    <h2 id="act2-heading">The envelope teaches the peer how to answer</h2>
+    <p>
+      An injected message is visible plaintext in the pane, by design — human
+      observability is a feature. It carries a correlation id and the exact
+      command the peer needs to reply with.
+    </p>
+  </div>
+  <Pane title="tmux:%3 — codex" active={true}>
+    <pre><code>[uplink id:a3f from:%1]
+review my diff
+
+reply with:
+  tmux send-keys -t %1 '[reply id:a3f] ...' Enter</code></pre>
+  </Pane>
+</section>
+
+<style>
+  .act {
+    display: grid;
+    gap: var(--space-l);
+    padding: var(--space-xl) var(--space-m);
+    max-width: 1200px;
+    margin: 0 auto;
+    align-items: center;
+  }
+  @media (min-width: 900px) { .act { grid-template-columns: 1fr 1.2fr; } }
+  h2 { font-size: var(--step-2); line-height: 1.1; margin: 0 0 var(--space-m); }
+  .copy p { color: var(--fg-dim); max-width: 44ch; }
+  pre { margin: 0; overflow-x: auto; }
+</style>

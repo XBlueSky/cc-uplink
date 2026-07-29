@@ -1,11 +1,39 @@
 ---
 import Base from '../layouts/Base.astro'
 import StatusLine from '../components/StatusLine.astro'
-import Pane from '../components/Pane.astro'
+import Act0 from '../components/acts/Act0.astro'
+import Act1 from '../components/acts/Act1.astro'
+import Act2 from '../components/acts/Act2.astro'
+import Act3 from '../components/acts/Act3.astro'
+import Act4 from '../components/acts/Act4.astro'
+import Act5 from '../components/acts/Act5.astro'
+
+import { resolve } from 'node:path'
+import { loadManifest } from '../lib/manifest.mjs'
+import { fetchLatestRelease, resolveRelease } from '../lib/release.mjs'
+
+// `loadManifest()`'s default path is derived from `manifest.mjs`'s own
+// `import.meta.url`, which is only correct when that module is loaded from
+// its on-disk location. Astro's static build bundles page dependencies into
+// hashed chunks under `dist/.prerender/chunks/`, which relocates
+// `import.meta.url` and breaks that relative computation. `process.cwd()` is
+// stable across that bundling (Astro is always invoked with `site/` as the
+// working directory here — see `package.json`'s `build`/`dev` scripts), so
+// resolve the manifest path explicitly from it rather than relying on the
+// loader's default.
+const manifestPath = resolve(process.cwd(), '../.cc-marketspec/dist/manifest.json')
+const manifest = loadManifest(manifestPath)
+const release = resolveRelease(await fetchLatestRelease(), manifest.version)
+
+const trap = manifest.traps[0] ?? ''
+const tip = manifest.tips[1] ?? manifest.tips[0] ?? ''
 ---
-<Base title="cc-uplink" description="Placeholder.">
+<Base title={`cc-uplink — ${manifest.tagline}`} description={manifest.description}>
   <StatusLine current="home" />
-  <Pane title="$ claude" active={true}>
-    <p>&gt; ask codex in the other pane to review my diff</p>
-  </Pane>
+  <Act0 tagline={manifest.tagline} intro={manifest.intro} release={release} />
+  <Act1 />
+  <Act2 />
+  <Act3 trap={trap} />
+  <Act4 tip={tip} />
+  <Act5 tools={manifest.tools} />
 </Base>

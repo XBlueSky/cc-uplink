@@ -1,0 +1,32 @@
+---
+import Pane from '../Pane.astro'
+
+const { tip } = Astro.props
+---
+<section class="act" data-act="4" aria-labelledby="act4-heading">
+  <div class="copy">
+    <h2 id="act4-heading">Same six tools, a completely different channel</h2>
+    <p>{tip}</p>
+  </div>
+  <Pane title="channel_invoke" active={true}>
+    <pre><code>channel_invoke image:codex generate
+  {"{"}"prompt": "a lighthouse, watercolour"{"}"}
+
+→ ./uplink-images/lighthouse.png</code></pre>
+  </Pane>
+</section>
+
+<style>
+  .act {
+    display: grid;
+    gap: var(--space-l);
+    padding: var(--space-xl) var(--space-m);
+    max-width: 1200px;
+    margin: 0 auto;
+    align-items: center;
+  }
+  @media (min-width: 900px) { .act { grid-template-columns: 1fr 1.2fr; } }
+  h2 { font-size: var(--step-2); line-height: 1.1; margin: 0 0 var(--space-m); }
+  .copy p { color: var(--fg-dim); max-width: 44ch; }
+  pre { margin: 0; overflow-x: auto; }
+</style>
