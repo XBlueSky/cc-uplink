@@ -2,7 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { existsSync, readFileSync } from 'node:fs'
 
-import { loadManifest } from '../src/lib/manifest.mjs'
+import { loadManifest, MANIFEST_PATH } from '../src/lib/manifest.mjs'
 
 const INDEX = new URL('../dist/index.html', import.meta.url).pathname
 
@@ -36,7 +36,7 @@ test('landing renders all six acts', (t) => {
 test('landing renders every fact from the manifest', (t) => {
   if (!existsSync(INDEX)) return t.skip('run `npm run build` first')
   const text = decodeEntities(readFileSync(INDEX, 'utf8'))
-  const m = loadManifest()
+  const m = loadManifest(MANIFEST_PATH)
 
   for (const tool of m.tools) {
     assert.ok(text.includes(tool), `tool ${tool} missing from landing`)
@@ -51,7 +51,7 @@ test('landing renders every fact from the manifest', (t) => {
 test('landing derives the install command from the manifest repository, not a hardcoded slug', (t) => {
   if (!existsSync(INDEX)) return t.skip('run `npm run build` first')
   const text = decodeEntities(readFileSync(INDEX, 'utf8'))
-  const m = loadManifest()
+  const m = loadManifest(MANIFEST_PATH)
 
   assert.ok(m.repository, 'manifest declares no repository')
   const slug = m.repository

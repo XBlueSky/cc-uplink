@@ -79,11 +79,22 @@ function main() {
   const repoRoot = resolve(siteDir, '..')
   const docsSrc = join(repoRoot, 'docs')
   const docsDest = join(siteDir, 'src', 'content', 'docs')
+  const manifestSrc = join(repoRoot, '.cc-marketspec', 'dist', 'manifest.json')
+  const manifestDest = join(siteDir, 'src', 'data', 'manifest.json')
 
   execFileSync('npx', ['@xbluesky/cc-marketspec@latest'], {
     cwd: repoRoot,
     stdio: 'inherit',
   })
+
+  // Copy the generated manifest inside the Astro project so pages can reach
+  // it with a static import (resolved by Vite relative to the importing
+  // module's own source path) instead of runtime path arithmetic derived
+  // from `process.cwd()` or a loader module's `import.meta.url` — both of
+  // which Astro's build can relocate. See `src/lib/manifest.mjs` and
+  // `src/pages/index.astro`.
+  mkdirSync(dirname(manifestDest), { recursive: true })
+  copyFileSync(manifestSrc, manifestDest)
 
   rmSync(docsDest, { recursive: true, force: true })
   mkdirSync(docsDest, { recursive: true })
@@ -92,7 +103,9 @@ function main() {
   for (const name of files) {
     copyFileSync(join(docsSrc, name), join(docsDest, name))
   }
-  console.log(`sync-content: manifest generated, ${files.length} docs copied: ${files.join(', ')}`)
+  console.log(
+    `sync-content: manifest generated and copied to src/data/, ${files.length} docs copied: ${files.join(', ')}`,
+  )
 }
 
 /**

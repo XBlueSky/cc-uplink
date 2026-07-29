@@ -8,21 +8,21 @@ import Act3 from '../components/acts/Act3.astro'
 import Act4 from '../components/acts/Act4.astro'
 import Act5 from '../components/acts/Act5.astro'
 
-import { resolve } from 'node:path'
-import { loadManifest } from '../lib/manifest.mjs'
+import manifestJson from '../data/manifest.json'
+import { parseManifest } from '../lib/manifest.mjs'
 import { fetchLatestRelease, resolveRelease } from '../lib/release.mjs'
 
-// `loadManifest()`'s default path is derived from `manifest.mjs`'s own
-// `import.meta.url`, which is only correct when that module is loaded from
-// its on-disk location. Astro's static build bundles page dependencies into
-// hashed chunks under `dist/.prerender/chunks/`, which relocates
-// `import.meta.url` and breaks that relative computation. `process.cwd()` is
-// stable across that bundling (Astro is always invoked with `site/` as the
-// working directory here — see `package.json`'s `build`/`dev` scripts), so
-// resolve the manifest path explicitly from it rather than relying on the
-// loader's default.
-const manifestPath = resolve(process.cwd(), '../.cc-marketspec/dist/manifest.json')
-const manifest = loadManifest(manifestPath)
+// Vite resolves this static JSON import relative to this module's own
+// source path and inlines it at build time, so Astro's chunk relocation
+// under `dist/.prerender/chunks/` (which broke a path computed from
+// `manifest.mjs`'s `import.meta.url`, and later a path computed from
+// `process.cwd()`) is no longer a hazard by construction — there is no
+// runtime path arithmetic left to relocate. The manifest also joins the
+// module graph this way, so `astro dev` re-renders when it changes instead
+// of serving stale facts from an `fs.readFileSync` Vite can't see.
+// `parseManifest` still applies every Task 4 guarantee — required fields,
+// the exactly-six-tools check — so a bad manifest fails the build loudly.
+const manifest = parseManifest(manifestJson)
 const release = resolveRelease(await fetchLatestRelease(), manifest.version)
 
 const trap = manifest.traps[0] ?? ''
@@ -30,8 +30,10 @@ const tip = manifest.tips[1] ?? manifest.tips[0] ?? ''
 
 // Act0's install command must name this repo, not a hardcoded slug — derive
 // it from the manifest's own `repository` URL so a rename breaks the build
-// instead of shipping a dead `/plugin marketplace add` command.
-const repoSlug = manifest.repository
+// instead of shipping a dead `/plugin marketplace add` command. `repository`
+// is `string | null` and not a required manifest field, so guard it like the
+// trap/tip lines above rather than assume it is always present.
+const repoSlug = (manifest.repository ?? '')
   .replace(/^https?:\/\/github\.com\//, '')
   .replace(/\.git$/, '')
   .replace(/\/$/, '')

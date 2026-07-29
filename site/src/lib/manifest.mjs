@@ -91,16 +91,34 @@ export function parseManifest(input) {
   }
 }
 
-const DEFAULT_PATH = resolve(
+/**
+ * The on-disk location `npm run sync` writes the marketspec manifest to,
+ * for Node-side callers (tests, scripts) that load it directly — contexts
+ * where this module is imported from its real on-disk location, so a path
+ * derived from its own `import.meta.url` is trustworthy.
+ *
+ * Not a default for `loadManifest`: a page bundled by Astro's build can be
+ * relocated into a hashed chunk under `dist/.prerender/chunks/`, which
+ * moves *that module's* `import.meta.url` but not this constant's — so a
+ * bundled caller silently inheriting this path would be wrong. Bundled
+ * pages must reach the manifest via a static JSON import instead (see
+ * `src/pages/index.astro`), which Vite resolves and inlines at build time.
+ */
+export const MANIFEST_PATH = resolve(
   dirname(fileURLToPath(import.meta.url)),
   '../../../.cc-marketspec/dist/manifest.json',
 )
 
 /**
- * @param {string} [path]
+ * @param {string} path required — there is no safe default, see `MANIFEST_PATH`'s doc comment
  * @returns {Manifest}
  */
-export function loadManifest(path = DEFAULT_PATH) {
+export function loadManifest(path) {
+  if (!path) {
+    throw new Error(
+      'loadManifest requires an explicit path — pass `MANIFEST_PATH` from Node-side callers, or use a static import with parseManifest for bundled pages',
+    )
+  }
   let raw
   try {
     raw = readFileSync(path, 'utf8')

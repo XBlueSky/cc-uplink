@@ -4,6 +4,7 @@ import { spawnSync } from 'node:child_process'
 import {
   chmodSync,
   copyFileSync,
+  existsSync,
   mkdtempSync,
   mkdirSync,
   readdirSync,
@@ -129,11 +130,18 @@ test('running the script via a symlink still executes main() (entry-point regres
   const scriptPath = join(root, 'site', 'scripts', 'sync-content.mjs')
   copyFileSync(fileURLToPath(new URL('../scripts/sync-content.mjs', import.meta.url)), scriptPath)
 
-  // Stub npx as a no-op so this test never touches the network.
+  // Stub npx as a no-op so this test never touches the network. The real
+  // `npx @xbluesky/cc-marketspec@latest` (invoked with `cwd: repoRoot`)
+  // writes `.cc-marketspec/dist/manifest.json` under the repo root as a
+  // side effect; main() now copies that file into `site/src/data/`, so the
+  // stub must produce it too, or that copy fails with ENOENT.
   const binDir = join(root, 'bin')
   mkdirSync(binDir, { recursive: true })
   const npxStub = join(binDir, 'npx')
-  writeFileSync(npxStub, '#!/bin/sh\nexit 0\n')
+  writeFileSync(
+    npxStub,
+    "#!/bin/sh\nmkdir -p .cc-marketspec/dist\necho '{}' > .cc-marketspec/dist/manifest.json\nexit 0\n",
+  )
   chmodSync(npxStub, 0o755)
 
   // The mismatch that broke the old `process.argv[1] === fileURLToPath(...)`
@@ -150,4 +158,8 @@ test('running the script via a symlink still executes main() (entry-point regres
   assert.equal(result.status, 0, result.stderr)
   assert.match(result.stdout, /sync-content: manifest generated/)
   assert.deepEqual(readdirSync(join(root, 'site', 'src', 'content', 'docs')), ['only.md'])
+  assert.ok(
+    existsSync(join(root, 'site', 'src', 'data', 'manifest.json')),
+    'manifest should be copied into site/src/data/',
+  )
 })

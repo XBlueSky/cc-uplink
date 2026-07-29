@@ -102,6 +102,11 @@ test('throws when a trap entry is blank, naming the array and index', () => {
   assert.throws(() => parseManifest(data), /traps\[0\]/)
 })
 
+test('loadManifest requires an explicit path — no silent default under bundling', () => {
+  assert.throws(() => loadManifest(), /requires an explicit path/)
+  assert.throws(() => loadManifest(undefined), /requires an explicit path/)
+})
+
 test('loadManifest throws a helpful error when the manifest file is missing', () => {
   const missingPath = resolve(
     dirname(fileURLToPath(import.meta.url)),
