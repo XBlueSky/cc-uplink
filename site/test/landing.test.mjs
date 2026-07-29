@@ -73,3 +73,16 @@ test('landing ships no ambience raster image', (t) => {
   const html = readFileSync(INDEX, 'utf8')
   assert.ok(!html.includes('ambience-'), 'an ambience reference PNG was shipped')
 })
+
+test('landing ships no JavaScript', (t) => {
+  if (!existsSync(INDEX)) return t.skip('run `npm run build` first')
+  const html = readFileSync(INDEX, 'utf8')
+  // Mirrors dist-guard.test.mjs's docs-page guard exactly (same regex,
+  // same exclusion for a JSON-LD script tag) — two guards checking the
+  // same "zero JavaScript" constraint must not disagree about what counts
+  // as a script.
+  assert.ok(
+    !/<script(?![^>]*type="application\/ld\+json")/i.test(html),
+    'landing page shipped a script tag',
+  )
+})
