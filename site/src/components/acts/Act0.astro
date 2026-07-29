@@ -1,11 +1,14 @@
 ---
 import Pane from '../Pane.astro'
 
-const { tagline, intro, release, repo, pluginName } = Astro.props
-// `loadManifest()` surfaces the plugin name but not the marketplace name
-// (that field isn't part of its return shape, and adding it there is out of
-// this task's scope), so the install command uses the plugin name for both
-// halves of `plugin@marketplace` — in this repo they happen to be identical.
+const { tagline, intro, release, repo, pluginName, marketplaceName } = Astro.props
+// `plugin@marketplace`'s second half names the marketplace entry, which is
+// not necessarily the plugin's own name — `parseManifest` now reads it from
+// the manifest's top-level `marketplace.name`. Falls back to `pluginName`
+// only if the manifest ever omits it (same nullable-field guard as `repo`
+// below), so a missing marketplace name degrades to today's behaviour
+// instead of rendering a literal `undefined`.
+const marketplaceSlug = marketplaceName ?? pluginName
 ---
 <section class="act" data-act="0" aria-labelledby="act0-heading">
   <div class="copy">
@@ -13,7 +16,7 @@ const { tagline, intro, release, repo, pluginName } = Astro.props
     <p class="intro">{intro}</p>
     <div class="install">
       <pre><code>/plugin marketplace add {repo}
-/plugin install {pluginName}@{pluginName}</code></pre>
+/plugin install {pluginName}@{marketplaceSlug}</code></pre>
       <p class="meta">
         <a href={release.url}>{release.tag}</a> · one static Rust binary · MIT
       </p>

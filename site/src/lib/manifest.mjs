@@ -13,6 +13,7 @@ const TOOL_COUNT = 6
  * @property {string} description
  * @property {string} version
  * @property {string | null} repository
+ * @property {string | null} marketplace
  * @property {string[]} tools
  * @property {{text: string, cmd: string | null}[]} setup
  * @property {string[]} tips
@@ -79,6 +80,13 @@ export function parseManifest(input) {
     description: plugin.description.trim(),
     version: plugin.version,
     repository: plugin.repository ?? plugin.homepage ?? null,
+    // The install command's `plugin@marketplace` half needs the *marketplace*
+    // entry's own name, not the plugin's — they happen to be identical in
+    // this repo today, but reading `data.marketplace.name` explicitly (top
+    // level of the manifest, a sibling of `plugins`, not nested under it)
+    // means a future repo where they diverge still renders a working
+    // install command instead of a silently-identical-looking wrong one.
+    marketplace: data?.marketplace?.name ?? null,
     tools,
     setup: (server?.setup ?? []).map((s) => ({ text: s.text, cmd: s.cmd ?? null })),
     tips: flattenTextList(plugin.tips ?? [], 'tips'),

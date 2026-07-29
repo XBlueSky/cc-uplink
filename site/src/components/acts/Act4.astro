@@ -9,7 +9,7 @@ const { tip } = Astro.props
     <p>{tip}</p>
   </div>
   <Pane title="channel_invoke" active={true}>
-    <pre><code>channel_invoke {"{"}
+    <pre tabindex="0" role="region" aria-label="channel_invoke call and its result"><code>channel_invoke {"{"}
   channel: "image:codex",
   op: "generate",
   args: {"{"} prompt: "a lighthouse in watercolour — save it as lighthouse.png" {"}"}

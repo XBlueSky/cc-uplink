@@ -64,6 +64,18 @@ test('landing derives the install command from the manifest repository, not a ha
   )
 })
 
+test('landing derives the install command\'s marketplace half from the manifest, not the plugin name', (t) => {
+  if (!existsSync(INDEX)) return t.skip('run `npm run build` first')
+  const text = decodeEntities(readFileSync(INDEX, 'utf8'))
+  const m = loadManifest(MANIFEST_PATH)
+
+  assert.ok(m.marketplace, 'manifest declares no marketplace name')
+  assert.ok(
+    text.includes(`/plugin install ${m.name}@${m.marketplace}`),
+    "install command missing the manifest-derived marketplace name — did parseManifest stop reading data.marketplace?",
+  )
+})
+
 test('the entity decoder actually decodes, so the assertions above are not vacuous', () => {
   assert.equal(decodeEntities('Don&#39;t &lt;a&gt; &amp; &quot;x&quot;'), 'Don\'t <a> & "x"')
 })

@@ -7,6 +7,7 @@ import { loadManifest, parseManifest } from '../src/lib/manifest.mjs'
 
 function valid() {
   return {
+    marketplace: { name: 'cc-uplink' },
     plugins: [{
       id: 'cc-uplink',
       name: 'cc-uplink',
@@ -37,6 +38,21 @@ test('normalises a valid manifest', () => {
   assert.equal(m.tools.length, 6)
   assert.equal(m.setup[1].cmd, 'codex login')
   assert.equal(m.skill.name, 'uplink')
+  assert.equal(m.marketplace, 'cc-uplink')
+})
+
+test('reads the marketplace name from the manifest\'s top level, not the plugin', () => {
+  const data = valid()
+  data.marketplace = { name: 'a-different-marketplace-slug' }
+  const m = parseManifest(data)
+  assert.equal(m.marketplace, 'a-different-marketplace-slug')
+})
+
+test('marketplace is null when the manifest has no marketplace section', () => {
+  const data = valid()
+  delete data.marketplace
+  const m = parseManifest(data)
+  assert.equal(m.marketplace, null)
 })
 
 test('accepts a JSON string', () => {

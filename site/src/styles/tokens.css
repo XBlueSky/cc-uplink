@@ -21,6 +21,35 @@
   --space-m: 1.5rem;
   --space-l: 3rem;
   --space-xl: 6rem;
+
+  /*
+   * Shiki (astro.config.mjs's `markdown.shikiConfig.theme: 'css-variables'`)
+   * paints docs code blocks with these instead of a bundled theme's
+   * hardcoded hex, so syntax-highlighted code uses this site's own palette
+   * and can be measured against the background it actually renders on
+   * (--bg-raised, same as Doc.astro's `.doc pre`). Every one of these is
+   * >=4.5:1 (WCAG AA) against --bg-raised — verified in
+   * site/test/contrast.test.mjs, not eyeballed. Where an existing token
+   * already cleared the floor it is reused rather than duplicated (comment,
+   * keyword, string all point at --fg-dim/--accent/--cyan); constant,
+   * function, inserted, and deleted have no existing equivalent so are
+   * defined here specifically for code, chosen from the same cool-with-one-
+   * warm-accent family as the rest of the palette.
+   */
+  --astro-code-foreground: var(--fg);
+  --astro-code-background: var(--bg-raised);
+  --astro-code-token-comment: var(--fg-dim);
+  --astro-code-token-keyword: var(--accent);
+  --astro-code-token-string: var(--cyan);
+  --astro-code-token-string-expression: var(--cyan);
+  --astro-code-token-parameter: var(--cyan);
+  --astro-code-token-link: var(--cyan);
+  --astro-code-token-punctuation: var(--fg-dim);
+  --astro-code-token-constant: #e0a458;
+  --astro-code-token-function: #b98bd6;
+  --astro-code-token-inserted: #7ec699;
+  --astro-code-token-deleted: #e0807f;
+  --astro-code-token-changed: #e0a458;
 }
 
 *, *::before, *::after { box-sizing: border-box; }

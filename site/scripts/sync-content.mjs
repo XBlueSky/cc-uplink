@@ -13,6 +13,17 @@ import { fileURLToPath } from 'node:url'
  */
 export const EXCLUDED_DIRS = Object.freeze(['superpowers'])
 
+// Pre-lowered once, so the comparison below is lowered-vs-lowered on both
+// sides. `dist-guard.test.mjs` independently lowers each `EXCLUDED_DIRS`
+// entry before comparing (`excluded.toLowerCase()`, then a per-segment
+// `===`); this guard used to lower only the candidate `segment` and compare
+// it against the raw (not-necessarily-lowered) `EXCLUDED_DIRS` array. That
+// happened to work only because today's sole entry is already lowercase — a
+// future mixed-case entry (e.g. `'Superpowers'`) would make `.includes()`
+// miss a correctly-cased match here while the dist guard still caught it,
+// i.e. this guard would fail open exactly where the other one didn't.
+const EXCLUDED_DIRS_LOWER = EXCLUDED_DIRS.map((dir) => dir.toLowerCase())
+
 /**
  * Throw if any relative path lives under a directory that must never be
  * published. Returns its input unchanged so it can wrap a collection call.
@@ -43,7 +54,7 @@ export function assertPublishable(relPaths) {
   }
   for (const relPath of relPaths) {
     const segments = relPath.split(/[\\/]/)
-    const hit = segments.find((segment) => EXCLUDED_DIRS.includes(segment.toLowerCase()))
+    const hit = segments.find((segment) => EXCLUDED_DIRS_LOWER.includes(segment.toLowerCase()))
     if (hit) {
       throw new Error(`refusing to publish ${relPath}: ${hit}/ is internal`)
     }

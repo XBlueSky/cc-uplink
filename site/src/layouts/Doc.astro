@@ -31,7 +31,12 @@ const { title, slug } = Astro.props
   .doc :global(h2) { font-size: var(--step-1); margin-top: var(--space-l); }
   .doc :global(pre) {
     padding: var(--space-m);
-    background: var(--bg-raised);
+    /* No `background` here: Shiki emits its own inline `background-color`
+       on every <pre> it generates (now `var(--astro-code-background)`,
+       resolving to this same --bg-raised — see tokens.css), and an inline
+       style always wins over this external rule regardless of specificity.
+       A `background` declaration here would never paint anything; keeping
+       it would misrepresent which layer actually controls this colour. */
     border: 1px solid var(--pane-border);
     overflow-x: auto;
     font-size: var(--step--1);

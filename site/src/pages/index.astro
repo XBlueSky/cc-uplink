@@ -23,7 +23,6 @@ import { fetchLatestRelease, resolveRelease } from '../lib/release.mjs'
 // `parseManifest` still applies every Task 4 guarantee — required fields,
 // the exactly-six-tools check — so a bad manifest fails the build loudly.
 const manifest = parseManifest(manifestJson)
-const release = resolveRelease(await fetchLatestRelease(), manifest.version)
 
 const trap = manifest.traps[0] ?? ''
 const tip = manifest.tips[1] ?? manifest.tips[0] ?? ''
@@ -37,10 +36,39 @@ const repoSlug = (manifest.repository ?? '')
   .replace(/^https?:\/\/github\.com\//, '')
   .replace(/\.git$/, '')
   .replace(/\/$/, '')
+
+// The same slug feeds the release lookup: `fetchLatestRelease`/`resolveRelease`
+// each default to a hardcoded `XBlueSky/cc-uplink`, which existed only because
+// nothing here used to pass a `repo` argument. A repo rename would otherwise
+// keep hitting the old GitHub API path (and therefore the old fallback URL)
+// even after Act0's own install command had already picked up the rename —
+// two facts on one page quietly disagreeing. `repoSlug || undefined` keeps
+// each function's own default live when the manifest has no repository at
+// all, rather than handing them an empty string.
+const fetchedRelease = await fetchLatestRelease({ repo: repoSlug || undefined })
+if (!fetchedRelease) {
+  // The GitHub releases API is unauthenticated here (anonymous rate limit is
+  // 60/hr/IP, and Pages builders share addresses aggressively), so a fallback
+  // is a realistic, recurring event, not just an outage. Surfacing it at
+  // build time is the follow-through on `fetchLatestRelease`/`resolveRelease`
+  // deliberately not logging inside the leaf module — this page is the
+  // caller, so this is where the layering says the warning belongs.
+  console.warn(
+    'cc-uplink site: could not fetch the latest GitHub release; falling back to the manifest version for the landing page release link.',
+  )
+}
+const release = resolveRelease(fetchedRelease, manifest.version, repoSlug || undefined)
 ---
 <Base title={`cc-uplink — ${manifest.tagline}`} description={manifest.description}>
   <StatusLine current="home" />
-  <Act0 tagline={manifest.tagline} intro={manifest.intro} release={release} repo={repoSlug} pluginName={manifest.name} />
+  <Act0
+    tagline={manifest.tagline}
+    intro={manifest.intro}
+    release={release}
+    repo={repoSlug}
+    pluginName={manifest.name}
+    marketplaceName={manifest.marketplace}
+  />
   <Act1 />
   <Act2 />
   <Act3 trap={trap} />
