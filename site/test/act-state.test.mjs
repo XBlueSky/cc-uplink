@@ -19,6 +19,13 @@ test('clamp01 clamps both ends', () => {
   assert.equal(clamp01(7), 1)
 })
 
+test('clamp01 is total: non-finite input maps to 0', () => {
+  assert.equal(clamp01(undefined), 0)
+  assert.equal(clamp01(null), 0)
+  assert.equal(clamp01(NaN), 0)
+  assert.equal(clamp01(Infinity), 0)
+})
+
 test('actAt maps progress onto the right act', () => {
   assert.equal(actAt(0).id, 0)
   assert.equal(actAt(0.11).id, 0)
@@ -33,6 +40,10 @@ test('actAt maps progress onto the right act', () => {
 test('actAt clamps out-of-range input instead of returning undefined', () => {
   assert.equal(actAt(-1).id, 0)
   assert.equal(actAt(2).id, 5)
+})
+
+test('actAt treats non-finite input as 0 via clamp01', () => {
+  assert.equal(actAt(undefined).id, 0)
 })
 
 test('localProgress runs 0..1 within each act', () => {

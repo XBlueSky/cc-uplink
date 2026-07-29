@@ -186,12 +186,14 @@ export async function initTimeline({ root, onProgress = () => {}, mq } = {}) {
   // ScrollTrigger does not invoke onUpdate at create time (progress 0
   // equals its own initial prevProgress, so the internal guard skips it),
   // so the first paint has to be forced explicitly here. Using
-  // `trigger.progress` rather than a hardcoded 0 matters on a mid-scroll
-  // reload: the browser restores scroll position before this script runs,
-  // ScrollTrigger's own initial refresh already computes `trigger.progress`
-  // to match, and painting from that instead of 0 means the correct act
-  // shows immediately instead of snapping to act 0 until the user's first
-  // scroll input self-corrects it.
+  // `trigger.progress` rather than a hardcoded 0 matters because the first
+  // paint has to honour whatever progress the trigger reports at init —
+  // ScrollTrigger's own initial refresh computes it from wherever the page
+  // actually is (normally 0, since page load starts there). This is not
+  // compensating for a restored scroll position: scroll restoration itself
+  // is disabled at the page level (see index.astro's script), precisely
+  // because the pre-.motion document is a different height than the
+  // pinned one, so a restored offset would map to the wrong act here.
   applyProgress(clamp01(trigger.progress))
 
   return {

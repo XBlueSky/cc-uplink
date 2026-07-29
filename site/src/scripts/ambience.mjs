@@ -141,6 +141,10 @@ export function initAmbience({ canvas, reducedMotion }) {
   }
 
   function draw(timeMs) {
+    // A stale rAF callback (already scheduled before dispose/context-loss)
+    // can still fire once after either has happened — this closes that gap
+    // and makes destroy() final against a still-live subscriber.
+    if (disposed || gl.isContextLost()) return
     // Wrapped rather than raw ms/1000: sin()'s precision decays on very
     // large arguments, which would freeze the fbm grain/drift on a tab left
     // open for ~10+ hours. Wrapping at 3600s costs one visible texture

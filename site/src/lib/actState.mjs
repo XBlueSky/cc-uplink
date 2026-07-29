@@ -11,8 +11,13 @@ export const ACTS = [
   { id: 5, start: 0.8, end: 1.0 },
 ]
 
+/**
+ * Clamps `n` into [0, 1]. Total over its input: anything that isn't a
+ * finite number (`NaN`, `Infinity`, `undefined`, `null`, ...) maps to `0`
+ * rather than propagating as `NaN` or an out-of-range value.
+ */
 export function clamp01(n) {
-  if (Number.isNaN(n)) return 0
+  if (!Number.isFinite(n)) return 0
   return n < 0 ? 0 : n > 1 ? 1 : n
 }
 

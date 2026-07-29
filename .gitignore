@@ -10,3 +10,6 @@ docs/superpowers/
 /site/src/data
 # wrangler writes an account/cache directory here on any pages command
 /.wrangler
+
+# verification-run artifacts from the playwright MCP server
+.playwright-mcp/

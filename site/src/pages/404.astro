@@ -12,7 +12,7 @@ import Pane from '../components/Pane.astro'
   title="404 — cc-uplink"
   description="No such pane. The path you followed does not exist on this session."
 >
-  <StatusLine current="home" />
+  <StatusLine />
   <div class="wrap">
     <Pane title="tmux — find-window" active={true}>
       <p><span class="err">404</span> no such pane</p>
@@ -29,7 +29,7 @@ import Pane from '../components/Pane.astro'
     place-content: center;
     padding: var(--space-xl) var(--space-m);
   }
-  .err { color: var(--signal); }
+  .err { color: var(--cyan); }
   .dim { color: var(--fg-dim); }
   a { color: var(--cyan); }
 </style>

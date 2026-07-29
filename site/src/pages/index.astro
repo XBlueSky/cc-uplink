@@ -83,6 +83,14 @@ const release = resolveRelease(fetchedRelease, manifest.version, repoSlug || und
     import { initTimeline, prefersReducedMotion } from '../scripts/timeline.mjs'
     import { initAmbience } from '../scripts/ambience.mjs'
 
+    // Restored offsets are meaningless across the flow→pinned layout swap
+    // (the pre-.motion document is a different height than the pinned one),
+    // so starting at act 0 is deliberate — this must run before
+    // initTimeline() is called, which is why it is the first statement in
+    // this script body (the imports above hoist and have no scroll side
+    // effects, so their position doesn't matter here).
+    if ('scrollRestoration' in history) history.scrollRestoration = 'manual'
+
     const root = document.querySelector('[data-acts]')
     const canvas = document.querySelector('[data-ambience]')
     const reducedMotion = prefersReducedMotion()
@@ -108,7 +116,8 @@ const release = resolveRelease(fetchedRelease, manifest.version, repoSlug || und
      * script proves it can take over.
      */
     .acts.motion {
-      min-height: 100svh;
+      height: 100svh;
+      min-height: 0;
       position: relative;
     }
     .acts.motion :global([data-act]) {
@@ -118,6 +127,58 @@ const release = resolveRelease(fetchedRelease, manifest.version, repoSlug || und
       align-content: center;
       will-change: transform, opacity;
     }
-    .acts.motion :global([data-act="0"]) { position: relative; }
+
+    /* Compress act chrome only while pinned — the static layout (no JS,
+       reduced motion) keeps its full padding untouched. */
+    .acts.motion :global(.act) {
+      padding-top: var(--space-m);
+      padding-bottom: var(--space-m);
+    }
+
+    /* Act 4's figure is the tallest single element on the page; cap it so
+       it can never be the reason an act doesn't fit the pinned box. */
+    .acts.motion :global(.artifact img) {
+      max-height: 30svh;
+      width: auto;
+      max-width: 100%;
+      margin-inline: auto;
+    }
+
+    @media (max-height: 860px) {
+      .acts.motion :global(h1) { font-size: var(--step-2); }
+      .acts.motion :global(.act) { gap: var(--space-m); }
+    }
+
+    /*
+     * Act 0 (headline h1 + full intro paragraph + install pane) is the
+     * tallest act by a wide margin, and it is the one still over budget at
+     * 1440x900 and 390x844 even after the 860px tier above — both are
+     * *taller* than 860px, so that tier never engages for them. This tier
+     * widens the h1 compression to cover them too (same step-2 value, so it
+     * is a no-op wherever the 860px tier already applies) and additionally
+     * compresses act 0's intro copy, its install block's own top margin, and
+     * its release/version meta line — chrome and secondary copy, not the
+     * headline or the install command itself.
+     */
+    @media (max-height: 920px) {
+      .acts.motion :global(h1) { font-size: var(--step-2); }
+      .acts.motion :global(.intro) { font-size: var(--step-0); line-height: 1.35; }
+      .acts.motion :global(.install) { margin-top: var(--space-s); }
+      .acts.motion :global(.meta) { font-size: calc(var(--step--1) * 0.82); }
+    }
+
+    /*
+     * The narrowest and shortest of the five acceptance viewports
+     * (390x664): act 0 is still tight, and every act's Pane (a
+     * fixed-content code/terminal block whose line count and font-size are
+     * unrelated to viewport width, so it doesn't shrink on its own the way
+     * wrapped copy does) is the next-tallest thing after act 0. Compresses
+     * Pane's own internal padding and line-height — its chrome, not its
+     * text — everywhere it appears.
+     */
+    @media (max-height: 740px) {
+      .acts.motion :global(h1) { font-size: var(--step-1); }
+      .acts.motion :global(.pane-body) { padding: var(--space-s); line-height: 1.4; }
+    }
   </style>
 </Base>
