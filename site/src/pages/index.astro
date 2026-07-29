@@ -27,10 +27,18 @@ const release = resolveRelease(await fetchLatestRelease(), manifest.version)
 
 const trap = manifest.traps[0] ?? ''
 const tip = manifest.tips[1] ?? manifest.tips[0] ?? ''
+
+// Act0's install command must name this repo, not a hardcoded slug — derive
+// it from the manifest's own `repository` URL so a rename breaks the build
+// instead of shipping a dead `/plugin marketplace add` command.
+const repoSlug = manifest.repository
+  .replace(/^https?:\/\/github\.com\//, '')
+  .replace(/\.git$/, '')
+  .replace(/\/$/, '')
 ---
 <Base title={`cc-uplink — ${manifest.tagline}`} description={manifest.description}>
   <StatusLine current="home" />
-  <Act0 tagline={manifest.tagline} intro={manifest.intro} release={release} />
+  <Act0 tagline={manifest.tagline} intro={manifest.intro} release={release} repo={repoSlug} pluginName={manifest.name} />
   <Act1 />
   <Act2 />
   <Act3 trap={trap} />

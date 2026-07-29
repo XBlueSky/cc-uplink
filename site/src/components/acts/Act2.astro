@@ -5,17 +5,18 @@ import Pane from '../Pane.astro'
   <div class="copy">
     <h2 id="act2-heading">The envelope teaches the peer how to answer</h2>
     <p>
-      An injected message is visible plaintext in the pane, by design — human
-      observability is a feature. It carries a correlation id and the exact
-      command the peer needs to reply with.
+      One <code>channel_send</code> later, the peer's pane holds this —
+      visible plaintext, by design: human observability is a feature. It
+      carries a correlation id and the exact command the peer needs to reply
+      with.
+    </p>
+    <p>
+      Always exactly one line: an envelope carries no control characters, so
+      tmux can inject it into any pane safely.
     </p>
   </div>
   <Pane title="tmux:%3 — codex" active={true}>
-    <pre><code>[uplink id:a3f from:%1]
-review my diff
-
-reply with:
-  tmux send-keys -t %1 '[reply id:a3f] ...' Enter</code></pre>
+    <pre><code>[uplink from:claude pane:%1 id:6b3b20e6] review my diff (reply: run `tmux send-keys -t %1 -l '[reply id:6b3b20e6] &lt;your answer&gt;' \; send-keys -t %1 Enter`)</code></pre>
   </Pane>
 </section>
 
@@ -29,6 +30,12 @@ reply with:
     align-items: center;
   }
   @media (min-width: 900px) { .act { grid-template-columns: 1fr 1.2fr; } }
+  /* See Act0.astro for why grid items need this: an unbreakable line in the
+     pane's <pre> would otherwise force the shared grid column past the
+     viewport, even though the <pre> itself scrolls. `trap`/`tip` text in the
+     sibling acts comes from the marketplace entry, not this repo, so this is
+     defensive against future copy, not just today's. */
+  .copy { min-width: 0; }
   h2 { font-size: var(--step-2); line-height: 1.1; margin: 0 0 var(--space-m); }
   .copy p { color: var(--fg-dim); max-width: 44ch; }
   pre { margin: 0; overflow-x: auto; }

@@ -13,7 +13,7 @@ const drivers = ['tmux', 'image:openai', 'image:codex', '…the next one']
     <ul class="tools" aria-label="The six fixed tools">
       {tools.map((tool) => <li>{tool}</li>)}
     </ul>
-    <p class="rule" aria-hidden="true">▲ fixed surface — 6 tools</p>
+    <p class="rule"><span aria-hidden="true">▲</span> fixed surface — 6 tools</p>
     <ul class="drivers" aria-label="Drivers">
       {drivers.map((driver) => <li>{driver}</li>)}
     </ul>
@@ -29,6 +29,8 @@ const drivers = ['tmux', 'image:openai', 'image:codex', '…the next one']
   }
   h2 { font-size: var(--step-2); line-height: 1.1; margin: 0 0 var(--space-m); }
   .lede { color: var(--fg-dim); max-width: 52ch; margin: 0 auto var(--space-l); }
+  /* .diagram is intentionally unstyled: it's a motion-plan hook for grouping
+     the tools/rule/drivers block as a single transform target later. */
   .tools, .drivers {
     display: flex;
     flex-wrap: wrap;
@@ -41,11 +43,15 @@ const drivers = ['tmux', 'image:openai', 'image:codex', '…the next one']
     font-size: var(--step--1);
   }
   .tools li {
-    padding: 0.4rem 0.7rem;
+    padding: calc(var(--space-s) / 2) var(--space-s);
     border: 1px solid var(--accent-dim);
     color: var(--fg);
   }
-  .drivers li { padding: 0.4rem 0.7rem; color: var(--fg-dim); border: 1px dashed var(--pane-border); }
+  .drivers li {
+    padding: calc(var(--space-s) / 2) var(--space-s);
+    color: var(--fg-dim);
+    border: 1px dashed var(--pane-border);
+  }
   .rule {
     font-family: var(--mono);
     font-size: var(--step--1);

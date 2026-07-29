@@ -29,6 +29,9 @@ import Pane from '../Pane.astro'
     align-items: center;
   }
   @media (min-width: 900px) { .act { grid-template-columns: 1fr 1.2fr; } }
+  /* See Act0.astro: keeps this grid item from being forced wide by an
+     unbreakable line in its content. */
+  .copy { min-width: 0; }
   h2 { font-size: var(--step-2); line-height: 1.1; margin: 0 0 var(--space-m); }
   .copy p { color: var(--fg-dim); max-width: 42ch; }
   .split { display: grid; gap: var(--space-s); }

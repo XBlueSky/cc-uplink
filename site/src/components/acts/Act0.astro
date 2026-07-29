@@ -1,22 +1,26 @@
 ---
 import Pane from '../Pane.astro'
 
-const { tagline, intro, release } = Astro.props
+const { tagline, intro, release, repo, pluginName } = Astro.props
+// `loadManifest()` surfaces the plugin name but not the marketplace name
+// (that field isn't part of its return shape, and adding it there is out of
+// this task's scope), so the install command uses the plugin name for both
+// halves of `plugin@marketplace` — in this repo they happen to be identical.
 ---
 <section class="act" data-act="0" aria-labelledby="act0-heading">
   <div class="copy">
     <h1 id="act0-heading">{tagline}</h1>
     <p class="intro">{intro}</p>
     <div class="install">
-      <pre><code>/plugin marketplace add XBlueSky/cc-uplink
-/plugin install cc-uplink@cc-uplink</code></pre>
+      <pre><code>/plugin marketplace add {repo}
+/plugin install {pluginName}@{pluginName}</code></pre>
       <p class="meta">
         <a href={release.url}>{release.tag}</a> · one static Rust binary · MIT
       </p>
     </div>
   </div>
   <Pane title="$ claude" active={true}>
-    <p>&gt; <span class="dim">waiting</span><span class="caret">▊</span></p>
+    <p>&gt; <span class="dim">waiting</span><span class="caret" aria-hidden="true">▊</span></p>
   </Pane>
 </section>
 

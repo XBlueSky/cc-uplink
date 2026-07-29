@@ -48,6 +48,22 @@ test('landing renders every fact from the manifest', (t) => {
   assert.ok(text.includes(m.tips[1]), 'tip missing')
 })
 
+test('landing derives the install command from the manifest repository, not a hardcoded slug', (t) => {
+  if (!existsSync(INDEX)) return t.skip('run `npm run build` first')
+  const text = decodeEntities(readFileSync(INDEX, 'utf8'))
+  const m = loadManifest()
+
+  assert.ok(m.repository, 'manifest declares no repository')
+  const slug = m.repository
+    .replace(/^https?:\/\/github\.com\//, '')
+    .replace(/\.git$/, '')
+    .replace(/\/$/, '')
+  assert.ok(
+    text.includes(`/plugin marketplace add ${slug}`),
+    'install command missing the manifest-derived repo slug — did the repo get renamed without updating index.astro?',
+  )
+})
+
 test('the entity decoder actually decodes, so the assertions above are not vacuous', () => {
   assert.equal(decodeEntities('Don&#39;t &lt;a&gt; &amp; &quot;x&quot;'), 'Don\'t <a> & "x"')
 })

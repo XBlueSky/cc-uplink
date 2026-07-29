@@ -9,10 +9,13 @@ const { tip } = Astro.props
     <p>{tip}</p>
   </div>
   <Pane title="channel_invoke" active={true}>
-    <pre><code>channel_invoke image:codex generate
-  {"{"}"prompt": "a lighthouse, watercolour"{"}"}
+    <pre><code>channel_invoke {"{"}
+  channel: "image:codex",
+  op: "generate",
+  args: {"{"} prompt: "a lighthouse in watercolour — save it as lighthouse.png" {"}"}
+{"}"}
 
-→ ./uplink-images/lighthouse.png</code></pre>
+→ paths: ["/Users/you/project/lighthouse.png"]</code></pre>
   </Pane>
 </section>
 
@@ -26,6 +29,9 @@ const { tip } = Astro.props
     align-items: center;
   }
   @media (min-width: 900px) { .act { grid-template-columns: 1fr 1.2fr; } }
+  /* See Act0.astro: keeps this grid item from being forced wide by an
+     unbreakable line — `tip` is marketplace-entry text, not this repo's. */
+  .copy { min-width: 0; }
   h2 { font-size: var(--step-2); line-height: 1.1; margin: 0 0 var(--space-m); }
   .copy p { color: var(--fg-dim); max-width: 44ch; }
   pre { margin: 0; overflow-x: auto; }
