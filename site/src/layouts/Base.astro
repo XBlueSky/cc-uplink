@@ -1,7 +1,8 @@
 ---
 import '../styles/tokens.css'
 
-const { title, description } = Astro.props
+const { title, description, image = '/og.png' } = Astro.props
+const ogImage = new URL(image, Astro.site).href
 ---
 <!doctype html>
 <html lang="en">
@@ -10,20 +11,13 @@ const { title, description } = Astro.props
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{title}</title>
     <meta name="description" content={description} />
-    <!--
-      No `public/` directory exists in this project (the site ships zero
-      extra assets by design — see the "no ambience raster image" and
-      "no JavaScript" dist guards), so `/favicon.svg` would 404 on every
-      page. Inlining a small mark as a data URI fixes the 404 without
-      introducing a static-asset pipeline for one icon: an upward chevron
-      (uplink) in cyan on the dark base, using exactly this palette's
-      --bg (#06070c) and --cyan (#58c5d4).
-    -->
-    <link
-      rel="icon"
-      type="image/svg+xml"
-      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%2306070c'/%3E%3Cpath d='M16 8l8 8h-5v8h-6v-8H8z' fill='%2358c5d4'/%3E%3C/svg%3E"
-    />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:image" content={ogImage} />
+    <meta property="og:url" content={Astro.url.href} />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
   </head>
   <body>
     <main><slot /></main>

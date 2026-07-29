@@ -1,8 +1,12 @@
+<p align="center"><img src="logo.png" alt="cc-uplink" width="420"></p>
+
 # cc-uplink
 
 [![CI](https://github.com/XBlueSky/cc-uplink/actions/workflows/ci.yml/badge.svg)](https://github.com/XBlueSky/cc-uplink/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/XBlueSky/cc-uplink)](https://github.com/XBlueSky/cc-uplink/releases)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
+**Website:** https://cc-uplink.pages.dev
 
 Claude Code's unified outbound channel layer: one Rust binary, one stdio MCP
 server, **six fixed tools** — with pluggable drivers underneath. Adding a
