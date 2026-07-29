@@ -179,6 +179,11 @@ const release = resolveRelease(fetchedRelease, manifest.version, repoSlug || und
     @media (max-height: 740px) {
       .acts.motion :global(h1) { font-size: var(--step-1); }
       .acts.motion :global(.pane-body) { padding: var(--space-s); line-height: 1.4; }
+      /* At 390x664 act 4 (copy + pane + figure stacked in one column) still
+         overflowed by ~72px with the 30svh cap — the figure is the only
+         element there that can give ground without losing information. */
+      .acts.motion :global(.artifact img) { max-height: 18svh; }
+      .acts.motion :global(.artifact figcaption) { margin-top: 0.25rem; }
     }
   </style>
 </Base>
