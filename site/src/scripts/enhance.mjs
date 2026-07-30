@@ -1,6 +1,7 @@
 import { clamp01 } from '../lib/scrub.mjs'
 import { journeyState } from '../lib/journeyState.mjs'
 import { demoState, demoProgress } from '../lib/demoState.mjs'
+import { initAmbience } from './ambience.mjs'
 
 /**
  * Gate: flat visitors (reduced-motion or a viewport under 760px, same
@@ -8,7 +9,10 @@ import { demoState, demoProgress } from '../lib/demoState.mjs'
  * shipped and nothing else — it's already the complete experience. This
  * module's job past the gate is every motion behaviour on the page: the §2
  * signal journey (the one pinned scene), the §3 invoke-demo scrub, the §4–§6
- * one-time reveals, the rail scrollspy, and the hero idle loop.
+ * one-time reveals, the rail scrollspy, and the hero idle loop. It also owns
+ * the WebGL ambience shader (see `initPageAmbience` below) — that one is
+ * NOT gated, because the shader is the page's background for every visitor,
+ * flat included (see that function's own comment for why).
  *
  * The flat/enhanced decision itself is NOT made here — it's made exactly
  * once, by a parser-blocking classic `<script is:inline>` at the top of
@@ -33,11 +37,18 @@ import { demoState, demoProgress } from '../lib/demoState.mjs'
  *
  * The copy buttons (and the hero line's flat fallback) are the one
  * exception: neither is motion, so both are wired unconditionally, before
- * the gate check below (see initCopyButtons/initHeroLineFallback).
+ * the gate check below (see initCopyButtons/initHeroLineFallback). The
+ * ambience shader joins them here for the same reason.
  */
 export function initEnhance() {
   initCopyButtons()
   initHeroLineFallback()
+
+  // Constructed unconditionally, before the gate check — see
+  // `initPageAmbience`'s own comment for why a flat visitor still gets a
+  // live (or, under reduced motion, single-frame) shader rather than the
+  // module skipping it entirely.
+  const ambience = initPageAmbience()
 
   if (!document.documentElement.classList.contains('enhanced')) return
 
@@ -46,7 +57,14 @@ export function initEnhance() {
   // each wiring their own (see the bottom of this function) — `initJourney`
   // and `initDemo` only measure the DOM and return a zero-argument "render
   // this frame" callback, they never touch `addEventListener` themselves.
+  // The ambience shader's progress uniform rides the same shared tick, once
+  // more per frame than either scrub — see the pushed callback below.
   const ticks = [initJourney(), initDemo()].filter(Boolean)
+  if (ambience) {
+    ticks.push(() => {
+      ambience.setProgress(clamp01(scrollY / (document.documentElement.scrollHeight - innerHeight)))
+    })
+  }
 
   initReveals()
   initRailSpy()
@@ -65,6 +83,36 @@ export function initEnhance() {
   addEventListener('scroll', onScroll, { passive: true })
   addEventListener('resize', onScroll)
   onScroll()
+}
+
+/**
+ * Boots the WebGL ambience shader (site/src/scripts/ambience.mjs) — the
+ * page's fixed-position background, formerly bootstrapped by index.astro's
+ * own dedicated `<script>` (see that file's diff history). Moved here so
+ * enhance.mjs is the one module that owns every piece of page behaviour;
+ * index.astro now imports only this file.
+ *
+ * Called unconditionally, before the enhanced/flat gate check above — the
+ * shader IS the design (Ambience.astro's CSS gradient is only its no-WebGL
+ * fallback), not a motion flourish layered on top of it, so a flat visitor
+ * (reduced-motion or narrow viewport) still gets it rendered. `reducedMotion`
+ * is read directly from `matchMedia` here — deliberately NOT derived from
+ * the `enhanced` class, whose gate also folds in a `narrow viewport` check
+ * (see index.astro's gate script): a visitor who is narrow but has NOT asked
+ * for reduced motion should still get a live, animated shader, just without
+ * the §2/§3 scroll scrub that only exists in enhanced mode. `initAmbience`'s
+ * own contract (see that module) treats `reducedMotion` as "freeze to one
+ * static frame" — folding the narrow check in here would wrongly freeze the
+ * shader for every narrow-but-motion-OK visitor too.
+ *
+ * Returns the handle `initAmbience` hands back (with `setProgress`/
+ * `destroy`), or `null` if the page has no `[data-ambience]` canvas at all.
+ */
+function initPageAmbience() {
+  const canvas = document.querySelector('[data-ambience]')
+  if (!canvas) return null
+  const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches
+  return initAmbience({ canvas, reducedMotion })
 }
 
 /**

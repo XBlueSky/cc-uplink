@@ -136,6 +136,22 @@ const REPLY_CMD = "$ tmux send-keys -t %1 -l '[reply id:6b3b20e6] LGTM — one n
   }
   .frame { width: min(640px, 92vw); position: relative; }
   .panes { display: grid; gap: var(--space-l); position: relative; }
+  /*
+   * Same fix, same reason, as Hero.astro's `.copy { min-width: 0; }`
+   * comment (see that file): grid items default to `min-width: auto`,
+   * which floors their size at their content's min-content width. Each of
+   * these wraps a `<pre>` whose lines are individually unbreakable (the
+   * peer pane's envelope tail alone is ~90 characters of one span) — at a
+   * 320px viewport that min-content floor was wide enough to blow out the
+   * whole page's horizontal scroll (`[data-pane-you]` alone measured
+   * ~1289px). `.pane-body`/`pre`'s own `overflow-x: auto` (Pane.astro /
+   * below in this file) already turns that overflow into an internal
+   * scrollbar — but only once something stops it from propagating past
+   * THIS element first; without `min-width: 0` here, the grid track (and
+   * therefore the page) grows to fit the pre instead of the pre scrolling
+   * inside a track sized to `.frame`.
+   */
+  [data-pane-you], [data-pane-peer] { min-width: 0; }
   .beatmark {
     font-family: var(--mono);
     font-size: var(--step--1);

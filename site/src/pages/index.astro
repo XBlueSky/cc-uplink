@@ -107,19 +107,13 @@ const release = resolveRelease(fetchedRelease, manifest.version, repoSlug || und
     />
   </div>
 
-  <script>
-    import { initAmbience } from '../scripts/ambience.mjs'
-    const canvas = document.querySelector('[data-ambience]')
-    const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches
-    if (canvas) initAmbience({ canvas, reducedMotion })
-  </script>
-
-  <!-- Kept as its own module (not folded into the ambience script above) so
-       the budget test's per-script accounting stays honest about what's
-       actually shipping. enhance.mjs self-runs on import, but no longer
-       decides flat-vs-enhanced itself — it only reads the `enhanced` class
-       the gate script above already stamped onto <html> pre-paint, then (if
-       present) wires the §2/§3 scrubs and everything else past that gate. -->
+  <!-- The one behaviour module: it self-runs on import, owns the WebGL
+       ambience shader bootstrap (constructed unconditionally — the shader
+       is the page's background for every visitor), and — only after
+       reading the `enhanced` class the gate script above already stamped
+       onto <html> pre-paint — wires the §2/§3 scrubs (ambience's own
+       progress uniform riding the same shared scroll tick) and everything
+       else past that gate. See enhance.mjs's own top-of-file comment. -->
   <script>
     import '../scripts/enhance.mjs'
   </script>

@@ -14,7 +14,23 @@ const { title, active = false } = Astro.props
     flex-direction: column;
     min-width: 0;
   }
-  .pane[data-active='true'] { border-color: var(--accent-dim); }
+  /*
+   * `box-shadow` is the storyboard's `.pane.active` glow (`box-shadow: 0 0
+   * 24px rgba(91,124,250,.14)`), ported here — Task 2's own port of this
+   * component picked up the border-color half of that rule but dropped the
+   * glow itself. `rgba(91,124,250,…)` is the storyboard's `--indigo-hi`,
+   * whose hex is byte-identical to this site's `--accent` token (`--accent-
+   * dim`, used above for the border, is the storyboard's plainer `--indigo`
+   * instead) — so the glow deliberately reaches for `--accent`, not
+   * `--accent-dim`, to actually match the brighter blue the storyboard
+   * renders. No motion is involved (a static shadow, not an animation or
+   * transition), so no `prefers-reduced-motion` guard is needed alongside
+   * it, matching border-color just above.
+   */
+  .pane[data-active='true'] {
+    border-color: var(--accent-dim);
+    box-shadow: 0 0 24px color-mix(in srgb, var(--accent) 14%, transparent);
+  }
   .pane-title {
     padding: 0.3rem var(--space-s);
     border-bottom: 1px solid var(--pane-border);

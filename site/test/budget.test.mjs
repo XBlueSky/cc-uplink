@@ -78,14 +78,18 @@ test('landing JavaScript stays under 20 kB gzipped', (t) => {
   const scripts = pageScriptBytes(html, DIST)
 
   // Non-vacuousness: expect at least the pre-paint enhancement gate (see
-  // index.astro), the ambience bootstrap, and enhance.mjs itself — three
-  // real contributions, in whatever mix of inline/external Astro happens
-  // to choose for any of them on a given build. Each must actually weigh
-  // something; a 0-byte entry would mean the accounting above broke, not
-  // that the script is free.
+  // index.astro) and enhance.mjs itself — two real contributions, in
+  // whatever mix of inline/external Astro happens to choose for either of
+  // them on a given build. Each must actually weigh something; a 0-byte
+  // entry would mean the accounting above broke, not that the script is
+  // free. Was ">= 3" (gate + a standalone ambience bootstrap + enhance)
+  // before ambience's bootstrap moved into enhance.mjs itself (see that
+  // file's `initPageAmbience`) — index.astro dropped to exactly these two
+  // script tags, so the floor drops to match, not because the accounting
+  // got looser.
   assert.ok(
-    scripts.length >= 3,
-    `expected at least 3 <script> contributions (gate + ambience + enhance), found ${scripts.length}: ${scripts.map((s) => s.kind).join(', ')}`,
+    scripts.length >= 2,
+    `expected at least 2 <script> contributions (gate + enhance, which now also bootstraps ambience), found ${scripts.length}: ${scripts.map((s) => s.kind).join(', ')}`,
   )
   for (const s of scripts) {
     assert.ok(s.bytes > 0, `script "${s.kind}" contributed 0 gzip bytes`)

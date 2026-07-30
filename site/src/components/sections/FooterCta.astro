@@ -31,6 +31,20 @@ const repoUrl = `https://github.com/${repo}`
   h2 { font-size: var(--step-2); line-height: 1.1; margin: 0 0 var(--space-l); }
   .install {
     display: inline-flex;
+    /*
+     * `inline-flex` shrink-to-fits to its content's PREFERRED (max-content)
+     * width — unlike Hero.astro's `.install` (a block-level `display: flex`,
+     * which fills its container's available width and so was never at
+     * risk here), an inline-level box's shrink-to-fit sizing ignores the
+     * containing block's width entirely unless capped. The install `<pre>`
+     * below has its own `overflow-x: auto`, but that only turns overflow
+     * into a scrollbar once something has already bounded this box's
+     * outer width — without `max-width: 100%` this element's un-scrolled,
+     * un-clamped preferred width (the full unbroken install command, ~336px)
+     * became the footer's actual rendered width at a 320px viewport,
+     * blowing out the page's horizontal scroll.
+     */
+    max-width: 100%;
     align-items: flex-start;
     gap: var(--space-s);
     flex-wrap: wrap;

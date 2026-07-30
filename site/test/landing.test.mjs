@@ -213,7 +213,7 @@ test('every markup hook Task 3/4 depends on is present with the expected count',
   const expectedOnce = [
     'data-page', 'data-journey', 'data-track', 'data-stage', 'data-beat',
     'data-pane-you', 'data-pane-peer', 'data-beam', 'data-packet',
-    'data-demo', 'data-art', 'data-hero-line', 'data-rail',
+    'data-demo', 'data-demo-box', 'data-art', 'data-hero-line', 'data-rail',
   ]
   for (const name of expectedOnce) {
     assert.equal(countAttr(html, name), 1, `expected exactly one [${name}]`)
