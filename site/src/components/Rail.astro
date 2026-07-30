@@ -1,0 +1,44 @@
+<nav class="rail" data-rail aria-label="page progress">
+  <a href="#hero" data-spy="hero" title="home"></a>
+  <a href="#journey" data-spy="journey" title="signal journey"></a>
+  <a href="#images" data-spy="images" title="images"></a>
+  <a href="#tools" data-spy="tools" title="six tools"></a>
+  <a href="#docs" data-spy="docs" title="docs"></a>
+  <a href="#end" data-spy="end" title="install"></a>
+</nav>
+
+<style>
+  .rail {
+    position: fixed;
+    right: 14px;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 20;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .rail a {
+    display: block;
+    width: 7px;
+    height: 7px;
+    border-radius: 1px;
+    background: var(--pane-border);
+    transition: background 0.25s, transform 0.25s;
+  }
+  .rail a.on {
+    background: var(--cyan);
+    transform: scale(1.35);
+  }
+  .rail a:focus-visible {
+    outline: 1px solid var(--cyan);
+    outline-offset: 3px;
+  }
+
+  /* Matches the storyboard's own breakpoint: the rail competes with thumb
+     reach on narrow viewports, and scroll position is self-evident there
+     without a chrome element pointing at it. */
+  @media (max-width: 760px) {
+    .rail { display: none; }
+  }
+</style>

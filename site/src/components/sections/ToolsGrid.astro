@@ -1,0 +1,62 @@
+---
+const { tools } = Astro.props
+
+const drivers = ['tmux', 'image:openai', 'image:codex', '…the next one']
+---
+<section class="tools-sec" id="tools" aria-labelledby="tools-heading">
+  <div class="wrap">
+    <div class="intro" data-reveal>
+      <h2 id="tools-heading">Adding a driver adds zero tools</h2>
+      <p class="body">
+        Drivers plug in underneath a fixed surface. However many ways Claude
+        can reach the outside world, the tool listing stays exactly this long.
+      </p>
+    </div>
+    <ul class="chips" aria-label="The six fixed tools">
+      {tools.map((tool) => <li class="chip" data-reveal>{tool}</li>)}
+    </ul>
+    <p class="surface-note" data-reveal><span aria-hidden="true">▲</span> fixed surface — 6 tools</p>
+    <ul class="chips drivers" aria-label="Drivers">
+      {drivers.map((driver) => <li class="chip drv" data-reveal>{driver}</li>)}
+    </ul>
+  </div>
+</section>
+
+<style>
+  .tools-sec {
+    padding: var(--space-xl) var(--space-m);
+    max-width: 900px;
+    margin: 0 auto;
+    text-align: center;
+  }
+  h2 { font-size: var(--step-2); line-height: 1.1; margin: 0 0 var(--space-m); }
+  .body { color: var(--fg-dim); max-width: 52ch; margin: 0 auto var(--space-l); }
+  .chips {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: var(--space-s);
+    margin: var(--space-l) 0 0;
+    padding: 0;
+    list-style: none;
+  }
+  .chip {
+    font-family: var(--mono);
+    font-size: var(--step--1);
+    padding: 0.5rem var(--space-s);
+    border: 1px solid var(--pane-border);
+    background: color-mix(in srgb, var(--bg-raised) 80%, transparent);
+    color: var(--fg);
+  }
+  .chip.drv {
+    border-style: dotted;
+    color: var(--fg-dim);
+    background: none;
+  }
+  .surface-note {
+    font-family: var(--mono);
+    font-size: var(--step--1);
+    color: var(--fg-dim);
+    margin: var(--space-m) 0;
+  }
+</style>

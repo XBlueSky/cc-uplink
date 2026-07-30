@@ -1,0 +1,127 @@
+---
+import Pane from '../Pane.astro'
+
+const { tagline, intro, release, repo, pluginName, marketplaceName } = Astro.props
+// `plugin@marketplace`'s second half names the marketplace entry, which is
+// not necessarily the plugin's own name — `parseManifest` reads it from the
+// manifest's top-level `marketplace.name`. Falls back to `pluginName` only if
+// the manifest ever omits it (same nullable-field guard as `repo` below), so
+// a missing marketplace name degrades to today's behaviour instead of
+// rendering a literal `undefined`.
+const marketplaceSlug = marketplaceName ?? pluginName
+---
+<section class="hero" id="hero" aria-labelledby="hero-heading">
+  <div class="wrap">
+    <div class="copy">
+      <h1 id="hero-heading">{tagline}</h1>
+      <p class="sub">{intro}</p>
+      <div class="install">
+        <pre><code>/plugin marketplace add {repo}
+/plugin install {pluginName}@{marketplaceSlug}</code></pre>
+        <button type="button" data-copy hidden>copy</button>
+      </div>
+      <p class="meta">
+        <a href={release.url}>{release.tag}</a> · one static Rust binary · MIT
+      </p>
+    </div>
+    <Pane title="tmux:%1 — claude" active={true}>
+      <pre>$ claude
+<span data-hero-line></span><span class="caret" aria-hidden="true"></span></pre>
+    </Pane>
+  </div>
+  <p class="cue" aria-hidden="true">▼ scroll</p>
+</section>
+
+<style>
+  .hero {
+    min-height: 100svh;
+    display: grid;
+    align-content: center;
+    position: relative;
+    padding: var(--space-xl) var(--space-m);
+    max-width: 1200px;
+    margin: 0 auto;
+  }
+  .wrap {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: var(--space-l);
+    align-items: center;
+  }
+  @media (min-width: 900px) { .wrap { grid-template-columns: 1.15fr 0.85fr; } }
+  /*
+   * Grid items default to `min-width: auto`, which floors their size at
+   * their content's min-content width. The install `<pre>` below contains an
+   * unbreakable command line; without this, its min-content forces the
+   * shared grid column (and the page) wider than the viewport even though
+   * the `<pre>` itself has `overflow-x: auto` — that only stops *its own*
+   * automatic-minimum-size contribution, not its ancestor `.copy`'s.
+   */
+  .copy { min-width: 0; }
+  h1 { font-size: var(--step-3); line-height: 1.05; margin: 0 0 var(--space-m); letter-spacing: -0.02em; }
+  .sub { color: var(--fg-dim); max-width: 46ch; font-size: var(--step-1); line-height: 1.5; }
+  .install {
+    margin-top: var(--space-l);
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-s);
+    flex-wrap: wrap;
+    padding: var(--space-m);
+    background: var(--bg-raised);
+    border: 1px solid var(--pane-border);
+  }
+  .install pre {
+    margin: 0;
+    font-family: var(--mono);
+    font-size: var(--step--1);
+    overflow-x: auto;
+  }
+  .install button {
+    flex: none;
+    font-family: var(--mono);
+    font-size: var(--step--1);
+    color: var(--cyan);
+    background: none;
+    border: 1px solid var(--pane-border);
+    padding: 0.25rem var(--space-s);
+    cursor: pointer;
+  }
+  .install button:hover,
+  .install button:focus-visible {
+    border-color: var(--cyan);
+    outline: none;
+  }
+  .meta {
+    margin-top: var(--space-s);
+    font-family: var(--mono);
+    font-size: var(--step--1);
+    color: var(--fg-dim);
+  }
+  .caret {
+    display: inline-block;
+    width: 0.55em;
+    height: 1.15em;
+    background: var(--cyan);
+    vertical-align: text-bottom;
+    animation: blink 1.1s step-end infinite;
+  }
+  @keyframes blink { 50% { opacity: 0; } }
+  .cue {
+    text-align: center;
+    margin: var(--space-xl) 0 0;
+    font-family: var(--mono);
+    font-size: var(--step--1);
+    color: var(--fg-dim);
+    animation: bob 2.2s ease-in-out infinite;
+  }
+  @keyframes bob { 50% { transform: translateY(7px); } }
+
+  @media (prefers-reduced-motion: reduce) {
+    .caret { animation: none; }
+    .cue { animation: none; }
+  }
+
+  @media (max-width: 760px) {
+    .wrap { grid-template-columns: 1fr; gap: var(--space-l); }
+  }
+</style>

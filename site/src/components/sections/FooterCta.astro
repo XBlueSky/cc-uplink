@@ -1,0 +1,68 @@
+---
+const { release, repo, pluginName, marketplaceName } = Astro.props
+// Same marketplace-name-vs-plugin-name distinction as Hero.astro — see that
+// file for why the fallback exists.
+const marketplaceSlug = marketplaceName ?? pluginName
+const repoUrl = `https://github.com/${repo}`
+---
+<footer id="end" aria-labelledby="footer-heading">
+  <div class="wrap" data-reveal>
+    <h2 id="footer-heading">Open a channel</h2>
+    <div class="install">
+      <pre><code>/plugin marketplace add {repo}
+/plugin install {pluginName}@{marketplaceSlug}</code></pre>
+      <button type="button" data-copy hidden>copy</button>
+    </div>
+    <p class="meta">
+      <a href={release.url}>{release.tag}</a> · MIT · <a href={repoUrl}>github.com/{repo}</a>
+    </p>
+  </div>
+</footer>
+
+<style>
+  footer {
+    padding: var(--space-xl) var(--space-m);
+    text-align: center;
+    position: relative;
+  }
+  h2 { font-size: var(--step-2); line-height: 1.1; margin: 0 0 var(--space-l); }
+  .install {
+    display: inline-flex;
+    align-items: flex-start;
+    gap: var(--space-s);
+    flex-wrap: wrap;
+    padding: var(--space-m);
+    background: var(--bg-raised);
+    border: 1px solid var(--pane-border);
+    text-align: left;
+  }
+  .install pre {
+    margin: 0;
+    font-family: var(--mono);
+    font-size: var(--step--1);
+    overflow-x: auto;
+  }
+  .install button {
+    flex: none;
+    font-family: var(--mono);
+    font-size: var(--step--1);
+    color: var(--cyan);
+    background: none;
+    border: 1px solid var(--pane-border);
+    padding: 0.25rem var(--space-s);
+    cursor: pointer;
+  }
+  .install button:hover,
+  .install button:focus-visible {
+    border-color: var(--cyan);
+    outline: none;
+  }
+  .meta {
+    margin-top: var(--space-m);
+    font-family: var(--mono);
+    font-size: var(--step--1);
+    color: var(--fg-dim);
+  }
+  .meta a { color: var(--fg-dim); }
+  .meta a:hover { color: var(--cyan); }
+</style>

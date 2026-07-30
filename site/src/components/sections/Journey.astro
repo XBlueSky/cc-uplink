@@ -1,0 +1,164 @@
+---
+import Pane from '../Pane.astro'
+
+// Every line below is a JS string constant reused for BOTH a span's
+// `data-text` attribute and its rendered children, so Astro's own HTML
+// escaping runs identically on both — the two can never drift out of sync
+// the way two hand-escaped copies of the same string could.
+//
+// Wire strings mirror `src/core/envelope.rs::format_outbound`'s
+// `ReplyHint::Full` shape exactly (from:claude, pane:%1, id:6b3b20e6,
+// message:"review my diff"): head = `[uplink from:{from} pane:{own_pane}
+// id:{id}] {message}`, tail = ` (reply: run \`tmux send-keys -t {own_pane}
+// -l '[reply id:{id}] <your answer>' \; send-keys -t {own_pane} Enter\`)`.
+const ASK = '> ask codex to review my diff'
+const CALL = '⏺ channel_send(to: "tmux:%3", message: "review my diff")'
+const RECEIPT = '  ⎿ delivered · id:6b3b20e6 · injection verified'
+const REPLY = '[reply id:6b3b20e6] LGTM — one nit: retry.rs:41 swallows the error cause'
+
+const IDLE = '▌idle'
+const ENV_HEAD = '[uplink from:claude pane:%1 id:6b3b20e6] review my diff'
+const ENV_TAIL = " (reply: run `tmux send-keys -t %1 -l '[reply id:6b3b20e6] <your answer>' \\; send-keys -t %1 Enter`)"
+const WORK1 = '> reading the envelope… reviewing 3 files'
+const WORK2 = '> retry.rs:41 swallows the error cause'
+const REPLY_CMD = "$ tmux send-keys -t %1 -l '[reply id:6b3b20e6] LGTM — one nit: retry.rs:41 swallows the error cause' \\; send-keys -t %1 Enter"
+---
+<section id="journey" data-journey aria-label="signal journey">
+  <div class="track" data-track>
+    <div class="stage" data-stage>
+      <div class="stage-inner">
+        <div class="frame">
+          <p class="beatmark">signal journey <b data-beat>[4/4]</b></p>
+          <div class="panes">
+            <div data-pane-you>
+              <Pane title="tmux:%1 — claude (you)" active={true}>
+                <pre tabindex="0" role="region" aria-label="tmux pane contents: your side of the exchange">$ claude
+<span data-line data-typed data-text={ASK}>{ASK}</span>
+<span data-line data-text={CALL}>{CALL}</span>
+<span class="dim" data-line data-text={RECEIPT}>{RECEIPT}</span>
+<span class="reply" data-line data-text={REPLY}>{REPLY}</span></pre>
+              </Pane>
+            </div>
+            <div data-pane-peer>
+              <Pane title="tmux:%3 — codex (peer)">
+                <pre tabindex="0" role="region" aria-label="tmux pane contents: the peer's side of the exchange, including the injected envelope"><span class="dim">{IDLE}</span>
+<span class="env" data-line data-text={ENV_HEAD}>{ENV_HEAD}</span><span class="envtail" data-line data-text={ENV_TAIL}>{ENV_TAIL}</span>
+<span data-line data-text={WORK1}>{WORK1}</span>
+<span data-line data-text={WORK2}>{WORK2}</span>
+<span data-line data-typed data-text={REPLY_CMD}>{REPLY_CMD}</span></pre>
+              </Pane>
+            </div>
+            <div class="beam" data-beam aria-hidden="true"><span class="packet" data-packet></span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="copy" data-copy>
+      <h2>A peer, in the pane next door</h2>
+      <p>
+        Whatever runs in another tmux pane — the Codex CLI, another Claude, a
+        plain shell — is addressable. You ask in plain words; <span class="k">channel_send</span> wraps
+        it into an envelope. <span class="k">The peer installs nothing.</span>
+      </p>
+    </div>
+    <div class="copy" data-copy>
+      <h2>The notification is the message itself</h2>
+      <p>
+        cc-uplink injects <span class="k">one plaintext line</span> into the
+        peer's terminal — that line IS the notification. Its tail carries the
+        exact command to reply with: a correlation id and a <span class="k">tmux send-keys</span> back
+        to your pane.
+      </p>
+    </div>
+    <div class="copy" data-copy>
+      <h2>The peer answers by running what it was handed</h2>
+      <p>
+        codex does the review, then runs the reply command verbatim. No SDK,
+        no webhook, no queue — <span class="k">the envelope was the protocol.</span>
+      </p>
+    </div>
+    <div class="copy" data-copy>
+      <h2>The reply lands in your pane, not in a queue</h2>
+      <p>
+        The <span class="k">[reply id:…]</span> line arrives in your own
+        pane, correlation id matching the one you sent. <span class="k">channel_recv</span> stays
+        an audit log — nothing to poll, ever.
+      </p>
+    </div>
+  </div>
+</section>
+
+<style>
+  /*
+   * Flat by default (this task ships no pinned/scroll-driven variant — see
+   * the storyboard's `body.flat` overrides, which are what this CSS matches
+   * unconditionally). A later task's enhancement layer can add its own
+   * class to unlock the pinned 460vh/4-beat staging; until it does, `.beam`
+   * and `.packet` below are pre-positioned to the storyboard's non-flat
+   * geometry but hidden via `display: none` so that layer only has to flip
+   * visibility, not rebuild layout.
+   */
+  .track { position: relative; }
+  .stage { padding: var(--space-xl) 0; }
+  .stage-inner {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0 var(--space-m);
+    display: flex;
+    justify-content: center;
+  }
+  .frame { width: min(640px, 92vw); position: relative; }
+  .panes { display: grid; gap: var(--space-l); position: relative; }
+  .beatmark {
+    font-family: var(--mono);
+    font-size: var(--step--1);
+    color: var(--fg-dim);
+    margin: 0 0 var(--space-s);
+    letter-spacing: 0.08em;
+  }
+  .beatmark b { color: var(--cyan); font-weight: 400; }
+
+  :global([data-pane-you] pre),
+  :global([data-pane-peer] pre) {
+    margin: 0;
+    overflow-x: auto;
+  }
+  .dim { color: var(--fg-dim); }
+  .reply { color: var(--cyan); }
+  .env { color: var(--signal); }
+  .envtail { color: color-mix(in srgb, var(--signal) 55%, transparent); }
+
+  .beam {
+    display: none;
+    position: absolute;
+    left: 8%;
+    right: 8%;
+    top: 50%;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, var(--signal), transparent);
+    pointer-events: none;
+  }
+  .packet {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    white-space: nowrap;
+    font-family: var(--mono);
+    font-size: var(--step--1);
+    color: var(--signal);
+    background: color-mix(in srgb, var(--bg) 92%, transparent);
+    border: 1px solid color-mix(in srgb, var(--signal) 55%, transparent);
+    border-radius: 3px;
+    padding: 3px 9px;
+  }
+
+  .copy {
+    max-width: 52ch;
+    margin: 0 auto;
+    padding: var(--space-l) var(--space-m) var(--space-s);
+  }
+  .copy h2 { font-size: var(--step-2); line-height: 1.2; margin: 0 0 var(--space-m); }
+  .copy p { color: var(--fg-dim); }
+  .copy .k { font-family: var(--mono); font-size: 0.92em; color: var(--fg); }
+</style>
