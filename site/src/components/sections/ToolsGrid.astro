@@ -59,4 +59,34 @@ const drivers = ['tmux', 'image:openai', 'image:codex', '…the next one']
     color: var(--fg-dim);
     margin: var(--space-m) 0;
   }
+
+  /*
+   * ── Enhanced mode: one-time reveal ─────────────────────────────────
+   * Hangs off `.enhanced` (see Journey.astro's own enhanced block for why:
+   * a flat visitor never gets the class, so this section's flat CSS — every
+   * `[data-reveal]` target fully visible, no transform — stands unchanged
+   * as the whole experience for them). enhance.mjs's shared IntersectionObserver
+   * adds `.in` once each target crosses 25% visible, then stops watching it.
+   *
+   * Stagger uses `:nth-child` (not inline `transition-delay`, which would
+   * mean putting a `style` attribute on markup the hook-inventory test in
+   * landing.test.mjs pins the exact shape of) — each `.chips` list restarts
+   * its own delay count from its first `.chip`, same as the storyboard's
+   * two independently-staggered chip rows.
+   */
+  :global(.enhanced) [data-reveal] {
+    opacity: 0;
+    translate: 0 26px;
+    transition: opacity 0.7s ease, translate 0.7s ease;
+  }
+  :global(.enhanced) [data-reveal].in {
+    opacity: 1;
+    translate: none;
+  }
+  :global(.enhanced) .chips .chip:nth-child(1) { transition-delay: 0s; }
+  :global(.enhanced) .chips .chip:nth-child(2) { transition-delay: 0.06s; }
+  :global(.enhanced) .chips .chip:nth-child(3) { transition-delay: 0.12s; }
+  :global(.enhanced) .chips .chip:nth-child(4) { transition-delay: 0.18s; }
+  :global(.enhanced) .chips .chip:nth-child(5) { transition-delay: 0.24s; }
+  :global(.enhanced) .chips .chip:nth-child(6) { transition-delay: 0.3s; }
 </style>

@@ -93,4 +93,37 @@ const PATHS = '  ⎿ paths: ["~/project/lighthouse.png"]'
     font-size: var(--step--1);
     color: var(--fg-dim);
   }
+
+  /*
+   * ── Enhanced mode: the §3 view-position scrub ──────────────────────
+   * Hangs off `.enhanced` (added to <html> by enhance.mjs, only past its
+   * gate) — same rule as Journey.astro's own enhanced block, and the same
+   * reason: a flat visitor never gets the class, so nothing below ever
+   * applies to them and the flat markup (already showing every line/the
+   * artifact fully visible) stands as the whole experience.
+   *
+   * `[data-line]`, `[data-typed]`, `[data-caret]` and `[data-art]` are all
+   * authored directly in this file's template (including as slotted
+   * children of <Pane>, which count as authored here — see Journey.astro's
+   * comment on why that distinction matters for `[data-pane]` itself), so
+   * plain scoped selectors reach them with no `:global()` workaround needed
+   * beyond wrapping `.enhanced`.
+   */
+  :global(.enhanced) [data-demo] [data-line]:not([data-typed]) {
+    opacity: 0;
+    transition: opacity 0.3s;
+  }
+  :global(.enhanced) [data-demo] [data-line]:not([data-typed]).on {
+    opacity: 1;
+  }
+  :global(.enhanced) [data-demo] [data-caret] {
+    display: inline-block;
+  }
+  :global(.enhanced) [data-demo] [data-art] {
+    opacity: 0;
+    transition: opacity 0.8s ease;
+  }
+  :global(.enhanced) [data-demo] [data-art].on {
+    opacity: 1;
+  }
 </style>
