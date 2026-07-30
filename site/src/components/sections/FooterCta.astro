@@ -6,13 +6,16 @@ const marketplaceSlug = marketplaceName ?? pluginName
 const repoUrl = `https://github.com/${repo}`
 ---
 <footer id="end" aria-labelledby="footer-heading">
-  <div class="wrap" data-reveal>
+  <div data-reveal>
     <h2 id="footer-heading">Open a channel</h2>
     <div class="install">
       <pre><code>/plugin marketplace add {repo}
 /plugin install {pluginName}@{marketplaceSlug}</code></pre>
       <button type="button" data-copy hidden>copy</button>
     </div>
+    <!-- source-line wrapping is deliberate: a newline adjacent to a tag
+         edge collapses to zero-width, not a space, so this stays on one
+         line rather than wrapping next to the two <a> tags -->
     <p class="meta">
       <a href={release.url}>{release.tag}</a> · MIT · <a href={repoUrl}>github.com/{repo}</a>
     </p>

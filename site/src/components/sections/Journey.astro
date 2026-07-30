@@ -33,7 +33,7 @@ const REPLY_CMD = "$ tmux send-keys -t %1 -l '[reply id:6b3b20e6] LGTM — one n
             <div data-pane-you>
               <Pane title="tmux:%1 — claude (you)" active={true}>
                 <pre tabindex="0" role="region" aria-label="tmux pane contents: your side of the exchange">$ claude
-<span data-line data-typed data-text={ASK}>{ASK}</span>
+<span data-line data-typed data-text={ASK}>{ASK}</span><span class="caret" data-caret aria-hidden="true">▊</span>
 <span data-line data-text={CALL}>{CALL}</span>
 <span class="dim" data-line data-text={RECEIPT}>{RECEIPT}</span>
 <span class="reply" data-line data-text={REPLY}>{REPLY}</span></pre>
@@ -45,7 +45,7 @@ const REPLY_CMD = "$ tmux send-keys -t %1 -l '[reply id:6b3b20e6] LGTM — one n
 <span class="env" data-line data-text={ENV_HEAD}>{ENV_HEAD}</span><span class="envtail" data-line data-text={ENV_TAIL}>{ENV_TAIL}</span>
 <span data-line data-text={WORK1}>{WORK1}</span>
 <span data-line data-text={WORK2}>{WORK2}</span>
-<span data-line data-typed data-text={REPLY_CMD}>{REPLY_CMD}</span></pre>
+<span data-line data-typed data-text={REPLY_CMD}>{REPLY_CMD}</span><span class="caret" data-caret aria-hidden="true">▊</span></pre>
               </Pane>
             </div>
             <div class="beam" data-beam aria-hidden="true"><span class="packet" data-packet></span></div>
@@ -54,7 +54,10 @@ const REPLY_CMD = "$ tmux send-keys -t %1 -l '[reply id:6b3b20e6] LGTM — one n
       </div>
     </div>
 
-    <div class="copy" data-copy>
+    <!-- source-line wrapping below is deliberate: a newline adjacent to a
+         tag edge collapses to zero-width, not a space, so every wrap point
+         is kept between two plain words instead of touching a <span> edge -->
+    <div class="copy" data-beat-copy>
       <h2>A peer, in the pane next door</h2>
       <p>
         Whatever runs in another tmux pane — the Codex CLI, another Claude, a
@@ -62,7 +65,7 @@ const REPLY_CMD = "$ tmux send-keys -t %1 -l '[reply id:6b3b20e6] LGTM — one n
         it into an envelope. <span class="k">The peer installs nothing.</span>
       </p>
     </div>
-    <div class="copy" data-copy>
+    <div class="copy" data-beat-copy>
       <h2>The notification is the message itself</h2>
       <p>
         cc-uplink injects <span class="k">one plaintext line</span> into the
@@ -71,14 +74,14 @@ const REPLY_CMD = "$ tmux send-keys -t %1 -l '[reply id:6b3b20e6] LGTM — one n
         to your pane.
       </p>
     </div>
-    <div class="copy" data-copy>
+    <div class="copy" data-beat-copy>
       <h2>The peer answers by running what it was handed</h2>
       <p>
         codex does the review, then runs the reply command verbatim. No SDK,
         no webhook, no queue — <span class="k">the envelope was the protocol.</span>
       </p>
     </div>
-    <div class="copy" data-copy>
+    <div class="copy" data-beat-copy>
       <h2>The reply lands in your pane, not in a queue</h2>
       <p>
         The <span class="k">[reply id:…]</span> line arrives in your own
@@ -127,7 +130,15 @@ const REPLY_CMD = "$ tmux send-keys -t %1 -l '[reply id:6b3b20e6] LGTM — one n
   .dim { color: var(--fg-dim); }
   .reply { color: var(--cyan); }
   .env { color: var(--signal); }
-  .envtail { color: color-mix(in srgb, var(--signal) 55%, transparent); }
+  /* 55% measured ~3.45:1 against --bg — under the 4.5:1 AA floor for
+     content this meaningful (it's the reply instructions). 67% clears it. */
+  .envtail { color: color-mix(in srgb, var(--signal) 67%, transparent); }
+
+  /* Caret hooks for the two scroll-typed lines in this section — inert
+     until a later enhancement layer drives them; the static/flat page
+     already shows the line's full text, so no blinking cursor is needed. */
+  [data-caret] { display: none; }
+  .caret { color: var(--cyan); }
 
   .beam {
     display: none;

@@ -28,14 +28,39 @@ function decodeEntities(html) {
 }
 
 /**
+ * Scans forward from `tagStart` (which must point at a tag's opening `<`)
+ * for the `>` that actually closes it, skipping over quoted attribute
+ * values. `data-text`'s value can legitimately contain a literal `>` (from
+ * `<your answer>`), which is valid unescaped inside a double-quoted HTML
+ * attribute but would end a naive `indexOf('>')` scan early, inside the
+ * attribute value instead of at the tag's real end.
+ */
+function findTagEnd(html, tagStart) {
+  let i = tagStart + 1
+  let quote = null
+  while (i < html.length) {
+    const ch = html[i]
+    if (quote) {
+      if (ch === quote) quote = null
+    } else if (ch === '"' || ch === "'") {
+      quote = ch
+    } else if (ch === '>') {
+      return i
+    }
+    i += 1
+  }
+  return -1
+}
+
+/**
  * Every `[data-line]` span also carries `data-text` mirroring its own
  * rendered content (see Journey.astro/InvokeDemo.astro: both render the same
  * JS string constant into the attribute and into the element's children, so
- * the two can never hand-drift). `data-text`'s value can legitimately contain
- * a literal `>` (from `<your answer>`), which is valid unescaped inside a
- * double-quoted HTML attribute but breaks any `[^>]*`-based tag-boundary
- * regex — so this walks the string by hand rather than pattern-matching the
- * whole tag.
+ * the two can never hand-drift). The `data-text` search below is bounded to
+ * the span's own opening tag (via `findTagEnd`) rather than scanning forward
+ * through the rest of the document, so a data-line span that were ever
+ * missing its own data-text couldn't silently pick up a later, unrelated
+ * span's attribute instead of failing loudly.
  */
 function findDataLineSpans(html) {
   const spans = []
@@ -46,21 +71,41 @@ function findDataLineSpans(html) {
     const lineIdx = html.indexOf(lineMarker, pos)
     if (lineIdx === -1) break
 
-    const textIdx = html.indexOf(textMarker, lineIdx)
-    assert.ok(textIdx !== -1, `data-line at offset ${lineIdx} has no data-text attribute`)
-    const valueStart = textIdx + textMarker.length
-    const valueEnd = html.indexOf('"', valueStart)
-    const dataText = html.slice(valueStart, valueEnd)
+    const tagStart = html.lastIndexOf('<', lineIdx)
+    assert.ok(tagStart !== -1, `no opening tag found before data-line at offset ${lineIdx}`)
+    const tagEnd = findTagEnd(html, tagStart)
+    assert.ok(tagEnd !== -1, `unterminated tag at offset ${tagStart}`)
+    const tag = html.slice(tagStart, tagEnd + 1)
 
-    const tagCloseIdx = html.indexOf('>', valueEnd)
-    const spanCloseIdx = html.indexOf('</span>', tagCloseIdx)
+    const textIdx = tag.indexOf(textMarker)
+    assert.ok(textIdx !== -1, `data-line tag at offset ${tagStart} has no data-text attribute`)
+    const valueStart = textIdx + textMarker.length
+    const valueEnd = tag.indexOf('"', valueStart)
+    assert.ok(valueEnd !== -1, `data-text attribute in tag at offset ${tagStart} is unterminated`)
+    const dataText = tag.slice(valueStart, valueEnd)
+
+    const spanCloseIdx = html.indexOf('</span>', tagEnd)
     assert.ok(spanCloseIdx !== -1, `no closing </span> found for data-line at offset ${lineIdx}`)
-    const content = html.slice(tagCloseIdx + 1, spanCloseIdx)
+    const content = html.slice(tagEnd + 1, spanCloseIdx)
 
     spans.push({ dataText: decodeEntities(dataText), content: decodeEntities(content) })
     pos = spanCloseIdx + '</span>'.length
   }
   return spans
+}
+
+/**
+ * Counts occurrences of an attribute NAME (not a general substring) in the
+ * raw HTML: `name` must be followed by whitespace, `>`, or `=` so a shorter
+ * attribute can't accidentally match as a prefix of a longer one — e.g.
+ * `data-beat` is legitimately a prefix of `data-beat-copy`, and a plain
+ * substring count would over-count `data-beat` by exactly the number of
+ * `data-beat-copy` blocks on the page.
+ */
+function countAttr(html, name) {
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const matches = html.match(new RegExp(`${escaped}(?=[\\s>=])`, 'g'))
+  return matches ? matches.length : 0
 }
 
 /**
@@ -112,7 +157,11 @@ test('every [data-line] element\'s textContent equals its data-text attribute, e
   const html = readFileSync(INDEX, 'utf8')
 
   const spans = findDataLineSpans(html)
-  assert.ok(spans.length > 0, 'found no [data-line] spans — did the journey/demo markup get dropped?')
+  assert.equal(
+    spans.length,
+    13,
+    'expected exactly 13 [data-line] spans (4 + 5 in Journey, 4 in InvokeDemo) — did the journey/demo markup change?',
+  )
 
   for (const [i, span] of spans.entries()) {
     assert.ok(span.dataText.length > 0, `[data-line] #${i} has an empty data-text`)
@@ -145,6 +194,45 @@ test('the §2 envelope head and tail wire strings each render exactly once', (t)
     countOccurrences(visible, ENV_TAIL),
     1,
     'the envelope tail (reply-command) string must render exactly once',
+  )
+})
+
+test('every markup hook Task 3/4 depends on is present with the expected count', (t) => {
+  if (!existsSync(INDEX)) return t.skip('run `npm run build` first')
+  const html = readFileSync(INDEX, 'utf8')
+
+  const expectedOnce = [
+    'data-page', 'data-journey', 'data-track', 'data-stage', 'data-beat',
+    'data-pane-you', 'data-pane-peer', 'data-beam', 'data-packet',
+    'data-demo', 'data-art', 'data-hero-line', 'data-rail',
+  ]
+  for (const name of expectedOnce) {
+    assert.equal(countAttr(html, name), 1, `expected exactly one [${name}]`)
+  }
+
+  const expectedCounts = {
+    'data-line': 13,
+    'data-typed': 3,
+    'data-beat-copy': 4,
+    'data-copy': 2,
+    'data-spy': 6,
+  }
+  for (const [name, count] of Object.entries(expectedCounts)) {
+    assert.equal(countAttr(html, name), count, `expected exactly ${count} [${name}]`)
+  }
+
+  // data-reveal's count may drift as sections gain/lose reveal targets — only
+  // guard that it's actually used somewhere.
+  assert.ok(countAttr(html, 'data-reveal') >= 1, 'expected at least one [data-reveal]')
+
+  // Both data-copy occurrences must be clipboard buttons, not the Journey
+  // beat-copy blocks (which were renamed to data-beat-copy specifically so
+  // Task 3/4's `[data-copy]` clipboard wiring can't attach to prose).
+  const buttonDataCopy = html.match(/<button\b[^>]*\bdata-copy(?=[\s>=])/g)
+  assert.equal(
+    buttonDataCopy ? buttonDataCopy.length : 0,
+    2,
+    'expected both [data-copy] occurrences to be on <button> elements',
   )
 })
 
