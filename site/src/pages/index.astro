@@ -92,4 +92,13 @@ const release = resolveRelease(fetchedRelease, manifest.version, repoSlug || und
     const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches
     if (canvas) initAmbience({ canvas, reducedMotion })
   </script>
+
+  <!-- Kept as its own module (not folded into the ambience script above) so
+       the budget test's module-script assertion — and any future per-script
+       accounting — stays honest about what's actually shipping. enhance.mjs
+       self-runs on import: gate, then (if the visitor isn't flat) the §2
+       pinned scroll scrub. -->
+  <script>
+    import '../scripts/enhance.mjs'
+  </script>
 </Base>

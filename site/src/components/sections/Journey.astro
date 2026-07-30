@@ -24,6 +24,26 @@ const WORK2 = '> retry.rs:41 swallows the error cause'
 const REPLY_CMD = "$ tmux send-keys -t %1 -l '[reply id:6b3b20e6] LGTM — one nit: retry.rs:41 swallows the error cause' \\; send-keys -t %1 Enter"
 ---
 <section id="journey" data-journey aria-label="signal journey">
+  <!--
+    Always present, regardless of flat/enhanced — the flat page's two <pre>
+    panes are themselves readable, so this is a plain-language summary
+    layered in front of them, not a replacement. In enhanced mode
+    enhance.mjs marks both <pre> panes aria-hidden (the pinned scrub types
+    them out letter by letter, which a screen reader would otherwise read
+    as it happens); this paragraph is what stays describing the exchange
+    for that visitor, and it never depends on JS to exist or to be visible
+    to sighted users — CSS clips it unconditionally.
+  -->
+  <p class="sr-only">
+    Transcript: you ask codex, running in the pane next door, to review your
+    diff via <span class="k">channel_send</span>. cc-uplink delivers the
+    request as one injected line in codex's terminal, carrying the exact
+    reply command to run. Codex reviews three files, notes that
+    retry.rs:41 swallows the error cause, and runs the reply command
+    verbatim. The reply — "LGTM — one nit: retry.rs:41 swallows the error
+    cause" — lands back in your own pane, correlation id matching the one
+    you sent.
+  </p>
   <div class="track" data-track>
     <div class="stage" data-stage>
       <div class="stage-inner">
@@ -94,13 +114,16 @@ const REPLY_CMD = "$ tmux send-keys -t %1 -l '[reply id:6b3b20e6] LGTM — one n
 
 <style>
   /*
-   * Flat by default (this task ships no pinned/scroll-driven variant — see
-   * the storyboard's `body.flat` overrides, which are what this CSS matches
-   * unconditionally). A later task's enhancement layer can add its own
-   * class to unlock the pinned 460vh/4-beat staging; until it does, `.beam`
-   * and `.packet` below are pre-positioned to the storyboard's non-flat
-   * geometry but hidden via `display: none` so that layer only has to flip
-   * visibility, not rebuild layout.
+   * Flat by default (matches the storyboard's `body.flat` overrides
+   * unconditionally) — this is what a reduced-motion or narrow-viewport
+   * visitor gets, and it's the whole page for a no-JS visitor too, so it
+   * has to stand on its own as the complete experience. `.beam` and
+   * `.packet` below are pre-positioned to the storyboard's non-flat
+   * geometry but hidden via `display: none`; the enhanced-mode block at the
+   * bottom of this file only has to flip visibility on top of this layout,
+   * not rebuild it. See that block for how `.enhanced` (added to <html> by
+   * site/src/scripts/enhance.mjs, and ONLY by it, after its own gate
+   * passes) turns this into the pinned 460vh/4-beat scroll scrub.
    */
   .track { position: relative; }
   .stage { padding: var(--space-xl) 0; }
@@ -134,11 +157,27 @@ const REPLY_CMD = "$ tmux send-keys -t %1 -l '[reply id:6b3b20e6] LGTM — one n
      content this meaningful (it's the reply instructions). 67% clears it. */
   .envtail { color: color-mix(in srgb, var(--signal) 67%, transparent); }
 
-  /* Caret hooks for the two scroll-typed lines in this section — inert
-     until a later enhancement layer drives them; the static/flat page
-     already shows the line's full text, so no blinking cursor is needed. */
+  /* Caret hooks for the two scroll-typed lines in this section — inert by
+     default; the static/flat page already shows each line's full text, so
+     no blinking cursor is needed there. enhance.mjs flips these visible
+     (see the `.enhanced` block below) only once it's driving the typing
+     itself. */
   [data-caret] { display: none; }
   .caret { color: var(--cyan); }
+
+  /* Standard visually-hidden-but-screen-reader-visible clip — present
+     unconditionally (see the <p class="sr-only"> above the track). */
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
 
   .beam {
     display: none;
@@ -172,4 +211,90 @@ const REPLY_CMD = "$ tmux send-keys -t %1 -l '[reply id:6b3b20e6] LGTM — one n
   .copy h2 { font-size: var(--step-2); line-height: 1.2; margin: 0 0 var(--space-m); }
   .copy p { color: var(--fg-dim); }
   .copy .k { font-family: var(--mono); font-size: 0.92em; color: var(--fg); }
+
+  /*
+   * ── Enhanced mode: the pinned scroll scrub ─────────────────────────
+   * Everything below hangs off `.enhanced` on <html>, which only
+   * site/src/scripts/enhance.mjs adds, and only after its own gate
+   * (reduced-motion / narrow viewport) passes. That ordering is the whole
+   * point: this block can never apply before JS has decided the visitor
+   * gets the pinned scene, so a flat visitor never sees a flash of hidden
+   * text or a pinned layout it doesn't get to unpin.
+   *
+   * `:global()` is required throughout — not just for the `.enhanced`
+   * ancestor, but because several of these selectors reach into
+   * Pane.astro's own rendered markup ([data-pane]), which doesn't carry
+   * this component's scope attribute.
+   */
+  :global(.enhanced) [data-track] {
+    height: 460vh;
+  }
+  :global(.enhanced) [data-stage] {
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    overflow: hidden;
+  }
+  :global(.enhanced) [data-journey] .stage-inner {
+    justify-content: end;
+  }
+  :global(.enhanced) [data-journey] .frame {
+    width: min(640px, 54vw);
+  }
+  :global(.enhanced) [data-beam] {
+    display: block;
+    opacity: 0;
+    transition: opacity 0.3s;
+  }
+
+  /*
+   * Left-column beat copy, absolutely positioned over the pinned stage as
+   * the track scrolls underneath it — same left-edge formula as
+   * `.stage-inner`'s own max-width/padding (1200px / --space-m), just
+   * inverted from "center the wrap" to "start the wrap's left edge".
+   * `.track` is `position: relative` unconditionally above, so these
+   * percentage `top` values resolve against the 460vh track, not the
+   * viewport. The four blocks are told apart purely by DOM order — `>`
+   * anchored to `[data-track]` so nth-child counts `.stage` as child 1 and
+   * the four `[data-beat-copy]` blocks as children 2–5 — rather than by
+   * adding index attributes the landing-page markup tests don't expect.
+   */
+  :global(.enhanced) [data-journey] [data-beat-copy] {
+    position: absolute;
+    z-index: 6;
+    width: min(36ch, 32vw);
+    left: max(calc((100vw - 1200px) / 2 + var(--space-m)), var(--space-m));
+  }
+  :global(.enhanced) [data-track] > [data-beat-copy]:nth-child(2) { top: 6%; }
+  :global(.enhanced) [data-track] > [data-beat-copy]:nth-child(3) { top: 31%; }
+  :global(.enhanced) [data-track] > [data-beat-copy]:nth-child(4) { top: 56%; }
+  :global(.enhanced) [data-track] > [data-beat-copy]:nth-child(5) { top: 80%; }
+
+  /*
+   * Animated lines start hidden and fade in via `.on` (added/removed by
+   * enhance.mjs's scrub). The two typewriter targets ([data-typed]) are
+   * exempt from this opacity regime — the script empties their textContent
+   * instead of fading them, so a scrub reversal shrinks the typed text
+   * back down rather than also replaying a fade.
+   */
+  :global(.enhanced) [data-journey] [data-line]:not([data-typed]) {
+    opacity: 0;
+    transition: opacity 0.3s;
+  }
+  :global(.enhanced) [data-journey] [data-line]:not([data-typed]).on {
+    opacity: 1;
+  }
+  :global(.enhanced) [data-journey] [data-caret] {
+    display: inline-block;
+  }
+
+  /* Pane focus: the peer pane's `active` state reuses Pane.astro's own
+     `[data-active]` attribute selector (no new CSS needed for that half);
+     `.faded` is new here, for the you-pane while the peer has focus. */
+  :global(.enhanced) [data-journey] [data-pane] {
+    transition: opacity 0.3s;
+  }
+  :global(.enhanced) [data-journey] [data-pane].faded {
+    opacity: 0.55;
+  }
 </style>
