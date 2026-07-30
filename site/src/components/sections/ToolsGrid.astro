@@ -83,6 +83,12 @@ const drivers = ['tmux', 'image:openai', 'image:codex', '…the next one']
     opacity: 1;
     translate: none;
   }
+  /* These `:nth-child` rules only win the `transition-delay` sub-property
+     over the `[data-reveal]` shorthand above because they're MORE specific
+     (`.enhanced .chips .chip:nth-child(n)` outranks `.enhanced
+     [data-reveal]`) — simplifying this selector (e.g. down to a bare
+     `.chip:nth-child(n)`) can drop it below the shorthand's specificity and
+     silently zero out the stagger. */
   :global(.enhanced) .chips .chip:nth-child(1) { transition-delay: 0s; }
   :global(.enhanced) .chips .chip:nth-child(2) { transition-delay: 0.06s; }
   :global(.enhanced) .chips .chip:nth-child(3) { transition-delay: 0.12s; }

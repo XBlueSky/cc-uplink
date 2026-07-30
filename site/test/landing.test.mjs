@@ -245,6 +245,49 @@ test('every markup hook Task 3/4 depends on is present with the expected count',
   )
 })
 
+test('the enhancement gate runs pre-paint: a blocking classic script, before [data-page]', (t) => {
+  if (!existsSync(INDEX)) return t.skip('run `npm run build` first')
+  const html = readFileSync(INDEX, 'utf8')
+
+  // Deliberately permissive about exact attribute spelling/order/quoting —
+  // this only needs to rule OUT `src`, `type="module"`, `defer`, and
+  // `async`, any of which would make the script non-blocking (a `src`
+  // fetch is async by default; `type="module"` scripts are deferred by
+  // spec; `defer`/`async` are deferred/async by name). A script that fails
+  // none of those four checks executes synchronously, in document order,
+  // the moment the parser reaches it — which is the actual guarantee this
+  // test exists to pin: the `enhanced` class lands on <html> before the
+  // parser (and therefore the renderer) ever reaches `[data-page]`, so a
+  // deep link straight to a mid-page anchor (e.g. `/#journey`) can't paint
+  // the flat layout for even one frame before flipping to the enhanced one.
+  const scriptRe = /<script\b([^>]*)>([\s\S]*?)<\/script>/g
+  let gateIndex = -1
+  let match
+  while ((match = scriptRe.exec(html))) {
+    const [, attrs, body] = match
+    if (/\bsrc\s*=/.test(attrs)) continue
+    if (/\btype\s*=\s*["']module["']/.test(attrs)) continue
+    if (/\bdefer\b/.test(attrs)) continue
+    if (/\basync\b/.test(attrs)) continue
+    if (body.includes('prefers-reduced-motion') && body.includes('enhanced')) {
+      gateIndex = match.index
+      break
+    }
+  }
+  assert.notEqual(
+    gateIndex,
+    -1,
+    'expected a parser-blocking classic <script> (no src/type="module"/defer/async) whose body checks prefers-reduced-motion and adds the `enhanced` class',
+  )
+
+  const dataPageIndex = html.search(/data-page(?=[\s>=])/)
+  assert.notEqual(dataPageIndex, -1, 'expected a [data-page] root somewhere in the page')
+  assert.ok(
+    gateIndex < dataPageIndex,
+    'the enhancement gate script must appear before [data-page] in the document — otherwise the parser could paint some page content before the gate runs',
+  )
+})
+
 test('the install command block appears exactly twice (hero + footer)', (t) => {
   if (!existsSync(INDEX)) return t.skip('run `npm run build` first')
   const html = readFileSync(INDEX, 'utf8')

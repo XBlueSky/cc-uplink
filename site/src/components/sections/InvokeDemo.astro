@@ -14,7 +14,7 @@ const PATHS = '  ⎿ paths: ["~/project/lighthouse.png"]'
     <!-- source-line wrapping below is deliberate: a newline adjacent to a
          tag edge collapses to zero-width, not a space, so every wrap point
          is kept between two plain words instead of touching a <span> edge -->
-    <div class="copy">
+    <div class="copy" data-reveal>
       <h2 id="images-heading">Same six tools, a completely different channel</h2>
       <p class="body">
         Images go through the same fixed surface: one <span class="k">channel_invoke</span> call.
@@ -23,7 +23,7 @@ const PATHS = '  ⎿ paths: ["~/project/lighthouse.png"]'
         hands back a file path on disk.
       </p>
     </div>
-    <div class="demo">
+    <div class="demo" data-demo-box>
       <Pane title="tmux:%1 — claude" active={true}>
         <pre tabindex="0" role="region" aria-label="tmux pane contents: an image-generation channel_invoke call and its result"><span data-line data-typed data-text={ASK}>{ASK}</span><span class="caret" data-caret aria-hidden="true">▊</span>
 <span data-line data-text={CALL}>{CALL}</span>
@@ -96,11 +96,24 @@ const PATHS = '  ⎿ paths: ["~/project/lighthouse.png"]'
 
   /*
    * ── Enhanced mode: the §3 view-position scrub ──────────────────────
-   * Hangs off `.enhanced` (added to <html> by enhance.mjs, only past its
-   * gate) — same rule as Journey.astro's own enhanced block, and the same
-   * reason: a flat visitor never gets the class, so nothing below ever
-   * applies to them and the flat markup (already showing every line/the
-   * artifact fully visible) stands as the whole experience.
+   * Hangs off `.enhanced` (added to <html> pre-paint by the gate script in
+   * index.astro — see enhance.mjs's own gate comment) — same rule as
+   * Journey.astro's own enhanced block, and the same reason: a flat
+   * visitor never gets the class, so nothing below ever applies to them
+   * and the flat markup (already showing every line/the artifact fully
+   * visible) stands as the whole experience.
+   *
+   * Every rule that actually HIDES content also requires `.scrubbing` on
+   * `[data-demo]` — a class `initDemo()` (enhance.mjs) adds only after it
+   * has confirmed every element this scrub needs actually exists. Without
+   * that second class, `.enhanced` alone hides nothing here: if a future
+   * markup edit ever breaks the contract (drops a `[data-line]`, renames
+   * `[data-art]`, …), `initDemo()` bails out before ever adding
+   * `.scrubbing`, so this CSS never fires and the section falls back to
+   * the fully-visible flat rendering instead of getting stuck hidden with
+   * no JS left to turn it back on. (Journey.astro does NOT have this
+   * second gate yet — its own `[data-line]` hiding rules still key off
+   * `.enhanced` alone. Tracked for a future round, not a contradiction.)
    *
    * `[data-line]`, `[data-typed]`, `[data-caret]` and `[data-art]` are all
    * authored directly in this file's template (including as slotted
@@ -109,21 +122,40 @@ const PATHS = '  ⎿ paths: ["~/project/lighthouse.png"]'
    * plain scoped selectors reach them with no `:global()` workaround needed
    * beyond wrapping `.enhanced`.
    */
-  :global(.enhanced) [data-demo] [data-line]:not([data-typed]) {
+  :global(.enhanced) [data-demo].scrubbing [data-line]:not([data-typed]) {
     opacity: 0;
     transition: opacity 0.3s;
   }
-  :global(.enhanced) [data-demo] [data-line]:not([data-typed]).on {
+  :global(.enhanced) [data-demo].scrubbing [data-line]:not([data-typed]).on {
     opacity: 1;
   }
-  :global(.enhanced) [data-demo] [data-caret] {
+  :global(.enhanced) [data-demo].scrubbing [data-caret] {
     display: inline-block;
   }
-  :global(.enhanced) [data-demo] [data-art] {
+  :global(.enhanced) [data-demo].scrubbing [data-art] {
     opacity: 0;
     transition: opacity 0.8s ease;
   }
-  :global(.enhanced) [data-demo] [data-art].on {
+  :global(.enhanced) [data-demo].scrubbing [data-art].on {
     opacity: 1;
+  }
+
+  /*
+   * One-time reveal for the intro `.copy` block (the storyboard has this
+   * too — its own §3 block opens with a `.reveal` div). Same rule/rationale
+   * as ToolsGrid.astro's own enhanced block: hangs off `.enhanced` alone
+   * (not `.scrubbing` — this target has nothing to do with the demo scrub
+   * itself, it's the shared `initReveals()` IntersectionObserver, which
+   * doesn't care whether `initDemo()` ever wired up successfully). Just
+   * one `[data-reveal]` target in this file, so no stagger needed.
+   */
+  :global(.enhanced) [data-reveal] {
+    opacity: 0;
+    translate: 0 26px;
+    transition: opacity 0.7s ease, translate 0.7s ease;
+  }
+  :global(.enhanced) [data-reveal].in {
+    opacity: 1;
+    translate: none;
   }
 </style>

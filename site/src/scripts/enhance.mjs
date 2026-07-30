@@ -10,29 +10,36 @@ import { demoState, demoProgress } from '../lib/demoState.mjs'
  * signal journey (the one pinned scene), the §3 invoke-demo scrub, the §4–§6
  * one-time reveals, the rail scrollspy, and the hero idle loop.
  *
- * `enhanced` is added to <html> synchronously, before first paint (same
- * CLS-0 technique as the deck's `.motion` gate) — every enhanced-only CSS
- * rule in the section components hangs off `.enhanced` for exactly this
- * reason: a flat visitor never gets the class, so the "lines/reveals start
- * hidden" rules never apply to them and there is no flash of hidden text.
+ * The flat/enhanced decision itself is NOT made here — it's made exactly
+ * once, by a parser-blocking classic `<script is:inline>` at the top of
+ * `<Base>` in index.astro, which stamps `enhanced` onto `<html>`
+ * synchronously, before the parser reaches `[data-page]` (before first
+ * paint). This module (a `<script type="module">`, deferred whether Astro
+ * inlines it or chunks it externally — see budget.test.mjs) only ever runs
+ * AFTER that, so it just reads the class rather than re-deriving it. Two
+ * evaluation sites used to exist — one in index.astro's old inline gate
+ * comment, one via this file's own `matchMedia`/`innerWidth` check — which
+ * could disagree if the viewport resized between the two (or, before the
+ * gate moved to a blocking script, simply because the module script runs
+ * later than first paint: a deep link straight to `/#journey` painted the
+ * flat transcript first, then flashed to pinned/hidden-lines once this
+ * module finally ran). One evaluation site, read twice, can't disagree with
+ * itself — see index.astro for the actual check.
  *
- * The copy buttons are the one exception: they're not motion, so they're
- * wired unconditionally, before the gate check below (see initCopyButtons).
+ * Every enhanced-only CSS rule in the section components hangs off
+ * `.enhanced` for the same reason the gate had to move pre-paint: a flat
+ * visitor never gets the class, so the "lines/reveals start hidden" rules
+ * never apply to them and there is no flash of hidden text.
+ *
+ * The copy buttons (and the hero line's flat fallback) are the one
+ * exception: neither is motion, so both are wired unconditionally, before
+ * the gate check below (see initCopyButtons/initHeroLineFallback).
  */
 export function initEnhance() {
   initCopyButtons()
+  initHeroLineFallback()
 
-  // Gate is evaluated once, here, at load — not re-checked on resize or on
-  // a live `matchMedia` listener. Deliberate: the storyboard's own gate is
-  // load-time-only too, and a visitor who resizes across the 760px
-  // breakpoint or flips reduced-motion mid-session while sitting on a
-  // 460vh pinned track is a teardown problem (unpin the scroll, replay or
-  // discard in-flight typed state, rebind listeners) this scene doesn't
-  // warrant solving. Don't read this as an oversight.
-  const flat = matchMedia('(prefers-reduced-motion: reduce)').matches || innerWidth < 760
-  if (flat) return
-
-  document.documentElement.classList.add('enhanced')
+  if (!document.documentElement.classList.contains('enhanced')) return
 
   // §2 and §3 are both scroll-position-driven scrubs; they share ONE
   // passive `scroll` listener with a single rAF-guarded tick rather than
@@ -110,9 +117,17 @@ function initJourney() {
     askEl, askCaretEl, callEl, receiptEl, replyEl,
     peerIdleEl, cmdEl, cmdCaretEl, envHeadEl, envTailEl, work1El, work2El,
   ]
-  // The markup contract not being met (a future edit dropping a hook) should
-  // silently no-op rather than throw mid-scroll and take the rest of the
-  // page's JS down with it — the flat markup underneath is still correct.
+  // The markup contract not being met (a future edit dropping a hook) is
+  // handled by returning `null` here rather than throwing mid-scroll and
+  // taking the rest of the page's JS down with it. That much is true. What
+  // is NOT true — corrected here rather than left to mislead the next
+  // reader — is any claim that this alone guarantees a correct flat
+  // fallback: Journey.astro's enhanced-mode CSS hides `[data-line]`
+  // unconditionally off `.enhanced` (no per-instance "only hide once this
+  // actually wired up" gate), so a broken contract here would render
+  // blank, not flat, exactly the bug `initDemo` below was given a
+  // `.scrubbing` gate to avoid. Giving Journey the same treatment is
+  // tracked for a future round, not done here.
   if (required.some((el) => !el)) return null
 
   // a11y: the pinned scene's letter-by-letter churn is described once, up
@@ -254,8 +269,11 @@ function initDemo() {
   // wider section here would make playback depend on the intro copy's
   // height too (and on whichever grid column happens to be taller when the
   // two-column layout collapses to one), which isn't what this scrub is
-  // supposed to track.
-  const demoBox = section.querySelector('.demo')
+  // supposed to track. Queried via its own `[data-demo-box]` hook rather
+  // than the `.demo` class it also carries — a class is presentational and
+  // can get renamed/restyled without anyone thinking of this script; the
+  // data attribute is the explicit contract.
+  const demoBox = section.querySelector('[data-demo-box]')
 
   const askEl = section.querySelector('[data-typed]')
   const caretEl = section.querySelector('[data-caret]')
@@ -264,6 +282,17 @@ function initDemo() {
 
   const required = [demoBox, askEl, caretEl, callEl, midEl, pathsEl, artEl]
   if (required.some((el) => !el)) return null
+
+  // Unlike initJourney above, this section's CSS does NOT hide anything off
+  // `.enhanced` alone — InvokeDemo.astro's opacity-0/display-none rules are
+  // keyed off `.enhanced [data-demo].scrubbing`, and `.scrubbing` is only
+  // ever added right here, after every required element above was
+  // confirmed present. So if a future markup edit breaks this contract,
+  // this function still returns `null` (no crash) AND the CSS never starts
+  // hiding lines/the artifact in the first place — a broken contract falls
+  // back to the fully-visible flat rendering instead of getting stuck
+  // hidden forever with no JS left to turn it back on.
+  section.classList.add('scrubbing')
 
   const askText = askEl.dataset.text ?? ''
   askEl.textContent = ''
@@ -369,9 +398,11 @@ const HERO_HOLD_TICKS = 14
  * to the next line. Time-driven (`setInterval`), not part of the shared
  * scroll tick above — the storyboard's own loop is scroll-independent too.
  * Only runs past the flat gate, so a reduced-motion/narrow visitor never
- * gets this `setInterval` at all (the flat markup shows nothing here by
- * design — see Hero.astro/task-2-brief: the span ships empty, its idle
- * loop is additive, not content).
+ * gets this `setInterval` at all — see `initHeroLineFallback` below for
+ * what they get instead (the markup ships the span empty per Task 2/the
+ * storyboard's own contract, but a flat visitor with nothing else touching
+ * that span would otherwise see a permanently blank line next to a static
+ * caret, which is what that function exists to prevent).
  */
 function initHeroLoop() {
   const lineEl = document.querySelector('[data-hero-line]')
@@ -406,6 +437,27 @@ function initHeroLoop() {
 }
 
 /**
+ * Flat fallback for the hero idle loop — the storyboard's own `else`
+ * branch (`if (!reduced) { setInterval(...) } else { $('hero-line')
+ * .textContent = heroLines[0] }`), restored here. `initHeroLoop`'s
+ * `setInterval` only ever runs past the enhanced gate, so without this a
+ * flat/reduced-motion/narrow visitor would see the hero pane's second line
+ * sit permanently empty next to a static (CSS-animated or not) caret —
+ * not the storyboard's intent, which was always to show at least the
+ * first idle line even when nothing is animating it. Not gated on
+ * `.enhanced` itself: called unconditionally, alongside `initCopyButtons`,
+ * and checks the class directly so it does the opposite thing on each side
+ * of the gate (flat → set the static line once; enhanced → do nothing,
+ * `initHeroLoop` owns the span from here).
+ */
+function initHeroLineFallback() {
+  if (document.documentElement.classList.contains('enhanced')) return
+  const lineEl = document.querySelector('[data-hero-line]')
+  if (!lineEl) return
+  lineEl.textContent = HERO_LINES[0]
+}
+
+/**
  * Clipboard copy buttons. NOT gated behind the motion/flat check above —
  * copying text isn't motion, and a flat visitor deserves a working copy
  * button as much as anyone. Ships `hidden` in the markup (see Hero.astro/
@@ -415,19 +467,47 @@ function initHeroLoop() {
  * collide with this exact attribute before Task 2's fix round renamed them
  * to `data-beat-copy`; scoping to `<button>` keeps that renamed-away
  * ambiguity from ever silently coming back.
+ *
+ * `writeText()` returns a promise that can reject (permission denied, no
+ * secure context, etc.) — both outcomes are handled explicitly (`.then(on
+ * success, on failure)`), so a rejection never becomes an uncaught
+ * rejection and the label always reflects what actually happened rather
+ * than optimistically claiming success before the write is even settled.
+ * The reverting label is the button's OWN original text (captured once, at
+ * wire-time) rather than a hardcoded `'copy'` — this button and the
+ * footer's are wired by the same loop and could in principle ship
+ * different label copy without this function needing to know. A pending
+ * revert timer is cleared on every click so rapid re-clicking can't leave
+ * two timers racing to stomp the label out from under each other.
  */
 function initCopyButtons() {
   if (!navigator.clipboard) return
 
   document.querySelectorAll('button[data-copy]').forEach((button) => {
     button.hidden = false
+    const originalLabel = button.textContent
+    let revertTimer = null
+
+    const revertAfter = (ms) => {
+      clearTimeout(revertTimer)
+      revertTimer = setTimeout(() => {
+        button.textContent = originalLabel
+      }, ms)
+    }
+
     button.addEventListener('click', () => {
+      clearTimeout(revertTimer)
       const pre = button.previousElementSibling
-      navigator.clipboard.writeText(pre ? pre.textContent : '')
-      button.textContent = 'copied'
-      setTimeout(() => {
-        button.textContent = 'copy'
-      }, 1200)
+      navigator.clipboard.writeText(pre ? pre.textContent : '').then(
+        () => {
+          button.textContent = 'copied'
+          revertAfter(1200)
+        },
+        () => {
+          button.textContent = 'failed'
+          revertAfter(1200)
+        },
+      )
     })
   })
 }

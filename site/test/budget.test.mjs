@@ -31,55 +31,88 @@ test('landing ships the enhancement script bundle', (t) => {
 })
 
 /**
- * Total gzipped bytes of every inline `<script type="module">…</script>`
- * body in `html`. Astro inlines small page scripts directly into the HTML
- * rather than emitting them as external chunks under `_astro/` — that's
- * where enhance.mjs's own bundle currently lands. Measuring only the
- * external `_astro/*.js` files (as this test did before) silently
- * under-counts exactly the JS this budget exists to cap: a page could ship
- * an arbitrarily large inline bundle and still read as "0 kB of JS" here.
+ * Walks every `<script>` tag in `html` and returns one `{kind, bytes}`
+ * entry per tag, `bytes` being that tag's actual gzipped contribution to
+ * page weight — regardless of whether Astro happened to inline it or chunk
+ * it externally under `dist/_astro/`. Replaces an earlier version of this
+ * budget test that only measured inline `<script type="module">` bodies:
+ * that approach went vacuous (silently measured 0 bytes, budget check kept
+ * "passing") the moment Astro's own inlining heuristic
+ * (`config.build.assetsInlineLimit`, checked against the bundled script's
+ * own byte size) decided a script had grown too large to inline and
+ * started chunking it externally instead — which is exactly what happened
+ * to enhance.mjs's bundle once Task 4 grew it past ~4 kB raw. This version
+ * can't go vacuous in either mode: a `src` script asserts its target file
+ * actually exists under `dist/` before gzipping it; a bodied script
+ * asserts its body is non-empty before gzipping that. Either kind failing
+ * its own assertion means an accounting bug, not a silent zero.
+ *
+ * `application/ld+json` tags are skipped — structured data, not executable
+ * JS, and irrelevant to a JS budget.
  */
-function inlineModuleScriptBytes(html) {
-  const re = /<script type="module">([\s\S]*?)<\/script>/g
-  let total = 0
+function pageScriptBytes(html, distRoot) {
+  const scriptRe = /<script\b([^>]*)>([\s\S]*?)<\/script>/g
+  const entries = []
   let match
-  while ((match = re.exec(html))) {
-    total += gzipSync(Buffer.from(match[1])).length
+  while ((match = scriptRe.exec(html))) {
+    const [, attrsRaw, body] = match
+    if (/type\s*=\s*["']application\/ld\+json["']/.test(attrsRaw)) continue
+
+    const srcMatch = attrsRaw.match(/\bsrc\s*=\s*["']([^"']+)["']/)
+    if (srcMatch) {
+      const filePath = join(distRoot, srcMatch[1])
+      assert.ok(existsSync(filePath), `script src "${srcMatch[1]}" does not resolve to a file under dist/`)
+      entries.push({ kind: srcMatch[1], bytes: gzipSync(readFileSync(filePath)).length })
+    } else {
+      assert.ok(body.trim().length > 0, 'an inline <script> (no src) has an empty body')
+      entries.push({ kind: '(inline)', bytes: gzipSync(Buffer.from(body)).length })
+    }
   }
-  return total
+  return entries
 }
 
 test('landing JavaScript stays under 20 kB gzipped', (t) => {
   if (!existsSync(DIST)) return t.skip('run `npm run build` first')
 
-  const files = jsFiles(join(DIST, '_astro'))
-  const externalTotal = files.reduce(
-    (sum, file) => sum + gzipSync(readFileSync(file)).length,
-    0,
-  )
   const html = readFileSync(join(DIST, 'index.html'), 'utf8')
-  const inlineTotal = inlineModuleScriptBytes(html)
+  const scripts = pageScriptBytes(html, DIST)
 
-  // Non-vacuousness guard: enhance.mjs currently ships as an inline
-  // `<script type="module">` body (see inlineModuleScriptBytes' doc
-  // comment), so this count should never be 0. Without this assertion, if
-  // Astro ever stopped inlining it — external chunking, or an attribute
-  // landing between `type="module"` and `>` so the regex above no longer
-  // matches — inlineModuleScriptBytes would silently return 0 and the
-  // budget check below would keep passing while quietly measuring nothing,
-  // resurrecting the exact undercounting bug this function exists to fix.
+  // Non-vacuousness: expect at least the pre-paint enhancement gate (see
+  // index.astro), the ambience bootstrap, and enhance.mjs itself — three
+  // real contributions, in whatever mix of inline/external Astro happens
+  // to choose for any of them on a given build. Each must actually weigh
+  // something; a 0-byte entry would mean the accounting above broke, not
+  // that the script is free.
   assert.ok(
-    inlineTotal > 0,
-    'expected at least one inline module script body — did Astro stop inlining enhance.mjs?',
+    scripts.length >= 3,
+    `expected at least 3 <script> contributions (gate + ambience + enhance), found ${scripts.length}: ${scripts.map((s) => s.kind).join(', ')}`,
   )
+  for (const s of scripts) {
+    assert.ok(s.bytes > 0, `script "${s.kind}" contributed 0 gzip bytes`)
+  }
 
-  const total = externalTotal + inlineTotal
+  const total = scripts.reduce((sum, s) => sum + s.bytes, 0)
   const kb = (total / 1024).toFixed(1)
+  const breakdown = scripts.map((s) => `${s.kind}: ${(s.bytes / 1024).toFixed(2)} kB`).join(', ')
   assert.ok(
     total <= BUDGET_BYTES,
-    `landing JS is ${kb} kB gzipped (${(externalTotal / 1024).toFixed(1)} kB external + ` +
-      `${(inlineTotal / 1024).toFixed(1)} kB inline), budget is 20 kB`,
+    `landing JS is ${kb} kB gzipped (${breakdown}), budget is 20 kB`,
   )
+})
+
+test('landing external chunk directory alone stays under 20 kB gzipped (conservative)', (t) => {
+  if (!existsSync(DIST)) return t.skip('run `npm run build` first')
+
+  // A second, cruder assertion kept alongside `pageScriptBytes` above:
+  // sums every `_astro/*.js` file regardless of whether `<script>` tags in
+  // `index.html` actually reference all of them. Catches the case the
+  // tag-walker can't — a JS chunk emitted but never linked from the page
+  // (dead weight still shipped in the build output) wouldn't show up in
+  // `pageScriptBytes`'s per-tag accounting at all.
+  const files = jsFiles(join(DIST, '_astro'))
+  const total = files.reduce((sum, file) => sum + gzipSync(readFileSync(file)).length, 0)
+  const kb = (total / 1024).toFixed(1)
+  assert.ok(total <= BUDGET_BYTES, `external _astro/*.js alone is already ${kb} kB gzipped, budget is 20 kB`)
 })
 
 test('docs pages reference no script bundle', (t) => {

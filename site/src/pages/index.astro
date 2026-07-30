@@ -62,6 +62,27 @@ if (!fetchedRelease) {
 const release = resolveRelease(fetchedRelease, manifest.version, repoSlug || undefined)
 ---
 <Base title={`cc-uplink — ${manifest.tagline}`} description={manifest.description}>
+  <!--
+    Pre-paint enhancement gate. Lives HERE (index.astro), not in Base.astro —
+    Base is shared with 404/docs pages whose own tests require exactly zero
+    scripts, so a gate that every page paid for would break those.
+
+    Deliberately a parser-blocking classic script (`is:inline` — no `src`,
+    no `type="module"`, no `defer`/`async`): the HTML parser executes it
+    the instant it's reached, synchronously, before the parser continues
+    past this point — including before it reaches `[data-page]` below, and
+    therefore before first paint. `<script>` (module, whether inlined by
+    Astro or chunked externally — see enhance.mjs) is deferred either way,
+    which is exactly the bug this replaces: a deep link straight to
+    `/#journey` used to paint the flat/static transcript first, then flash
+    to the pinned/hidden-lines layout once the module script finally ran.
+    This is the ONE evaluation site for the flat/enhanced decision now —
+    enhance.mjs no longer re-derives it (see that file's own gate comment).
+  -->
+  <script is:inline>
+    if (!matchMedia('(prefers-reduced-motion: reduce)').matches && innerWidth >= 760)
+      document.documentElement.classList.add('enhanced')
+  </script>
   <Ambience />
   <StatusLine current="home" />
   <Rail />
@@ -94,10 +115,11 @@ const release = resolveRelease(fetchedRelease, manifest.version, repoSlug || und
   </script>
 
   <!-- Kept as its own module (not folded into the ambience script above) so
-       the budget test's module-script assertion — and any future per-script
-       accounting — stays honest about what's actually shipping. enhance.mjs
-       self-runs on import: gate, then (if the visitor isn't flat) the §2
-       pinned scroll scrub. -->
+       the budget test's per-script accounting stays honest about what's
+       actually shipping. enhance.mjs self-runs on import, but no longer
+       decides flat-vs-enhanced itself — it only reads the `enhanced` class
+       the gate script above already stamped onto <html> pre-paint, then (if
+       present) wires the §2/§3 scrubs and everything else past that gate. -->
   <script>
     import '../scripts/enhance.mjs'
   </script>

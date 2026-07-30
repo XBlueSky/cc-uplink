@@ -109,6 +109,15 @@ test('demoProgress: raw ratio 0.5 with a square viewport/height maps through seg
   assert.equal(demoProgress({ top: 0, height: 900, viewportHeight: 900 }), 1)
 })
 
+test('demoProgress: a real mid-scrub geometry lands exactly on the midpoint of its playback window', () => {
+  // raw ratio = (900 - 540) / (900 + 300) = 360/1200 = 0.3 -> seg(0.3, 0.12, 0.48) = 0.18/0.36 = 0.5
+  // (unlike the two boundary cases above, this pins an UNCLAMPED point of the
+  // formula itself — a regression that shifted 0.12/0.48 by even a little
+  // would move this exact value, where the 0/1 boundary tests above wouldn't
+  // notice since they're clamped flat at either end.)
+  assert.equal(demoProgress({ top: 540, height: 300, viewportHeight: 900 }), 0.5)
+})
+
 test('demoProgress: totality under non-finite input', () => {
   assert.equal(demoProgress({ top: NaN, height: 300, viewportHeight: 900 }), 0)
 })
