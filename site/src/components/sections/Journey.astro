@@ -221,10 +221,21 @@ const REPLY_CMD = "$ tmux send-keys -t %1 -l '[reply id:6b3b20e6] LGTM — one n
    * gets the pinned scene, so a flat visitor never sees a flash of hidden
    * text or a pinned layout it doesn't get to unpin.
    *
-   * `:global()` is required throughout — not just for the `.enhanced`
-   * ancestor, but because several of these selectors reach into
-   * Pane.astro's own rendered markup ([data-pane]), which doesn't carry
-   * this component's scope attribute.
+   * `:global()` wraps only `.enhanced` in every rule below — Astro still
+   * scopes the rest of each selector to THIS component (Journey.astro), by
+   * appending Journey's own scope attribute to it. That's fine for
+   * `[data-track]`, `[data-beat-copy]`, `[data-line]`, `[data-pane-you]`
+   * and everything else here: they're all authored directly in this
+   * file's template (slotted children of <Pane> count as authored here
+   * too), so they genuinely carry Journey's scope attribute and the
+   * selectors match. It is NOT fine for `[data-pane]` itself — that
+   * element's opening tag is authored in Pane.astro, so it carries PANE's
+   * scope attribute instead, and a Journey-scoped selector targeting
+   * `[data-pane]` directly can never match, `:global(.enhanced)` prefix or
+   * not (this bit a real rule below once: seemed to compile fine, silently
+   * never applied at runtime). Where pane-level styling is needed, it goes
+   * on a wrapper THIS component owns ([data-pane-you]/[data-pane-peer])
+   * instead of reaching into Pane's own root element.
    */
   :global(.enhanced) [data-track] {
     height: 460vh;
@@ -237,6 +248,9 @@ const REPLY_CMD = "$ tmux send-keys -t %1 -l '[reply id:6b3b20e6] LGTM — one n
   }
   :global(.enhanced) [data-journey] .stage-inner {
     justify-content: end;
+    align-items: center;
+    height: 100%;
+    padding: 0;
   }
   :global(.enhanced) [data-journey] .frame {
     width: min(640px, 54vw);
@@ -288,13 +302,20 @@ const REPLY_CMD = "$ tmux send-keys -t %1 -l '[reply id:6b3b20e6] LGTM — one n
     display: inline-block;
   }
 
-  /* Pane focus: the peer pane's `active` state reuses Pane.astro's own
-     `[data-active]` attribute selector (no new CSS needed for that half);
-     `.faded` is new here, for the you-pane while the peer has focus. */
-  :global(.enhanced) [data-journey] [data-pane] {
+  /*
+   * Pane focus: the peer pane's `active` state reuses Pane.astro's own
+   * `[data-active]` attribute selector (no new CSS needed for that half —
+   * enhance.mjs just flips the attribute on the element Pane.astro already
+   * scoped). `.faded` is new here, for the you-pane while the peer has
+   * focus — toggled by enhance.mjs on `[data-pane-you]`, the wrapper THIS
+   * component renders, not on Pane's own `[data-pane]` root (see the
+   * comment above the enhanced block for why that distinction matters:
+   * a selector here can't reach into Pane.astro's own element at all).
+   */
+  :global(.enhanced) [data-journey] [data-pane-you] {
     transition: opacity 0.3s;
   }
-  :global(.enhanced) [data-journey] [data-pane].faded {
+  :global(.enhanced) [data-journey] [data-pane-you].faded {
     opacity: 0.55;
   }
 </style>

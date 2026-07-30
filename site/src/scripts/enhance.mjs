@@ -15,6 +15,13 @@ import { journeyState } from '../lib/journeyState.mjs'
  * never apply to them and there is no flash of hidden text.
  */
 export function initEnhance() {
+  // Gate is evaluated once, here, at load — not re-checked on resize or on
+  // a live `matchMedia` listener. Deliberate: the storyboard's own gate is
+  // load-time-only too, and a visitor who resizes across the 760px
+  // breakpoint or flips reduced-motion mid-session while sitting on a
+  // 460vh pinned track is a teardown problem (unpin the scroll, replay or
+  // discard in-flight typed state, rebind listeners) this scene doesn't
+  // warrant solving. Don't read this as an oversight.
   const flat = matchMedia('(prefers-reduced-motion: reduce)').matches || innerWidth < 760
   if (flat) return
 
@@ -48,24 +55,17 @@ function initJourney() {
   const youPre = paneYouWrap?.querySelector('pre')
   const peerPre = panePeerWrap?.querySelector('pre')
 
-  // Selects on [data-text] rather than [data-line] on purpose: every
-  // data-line span also carries data-text (see landing.test.mjs), and
-  // nothing else on the page does, so it's an equally unique selector for
-  // "the plain (non-typed) lines in this pane". Spelling out `data-line`
-  // literally here would land that exact substring inside this bundle's
-  // inlined <script> once Astro ships it — indistinguishable, to a plain
-  // text scan of the built HTML, from an actual markup attribute.
   const askEl = youPre?.querySelector('[data-typed]')
   const askCaretEl = youPre?.querySelector('[data-caret]')
   const [callEl, receiptEl, replyEl] = youPre
-    ? youPre.querySelectorAll('[data-text]:not([data-typed])')
+    ? youPre.querySelectorAll('[data-line]:not([data-typed])')
     : []
 
   const peerIdleEl = peerPre?.querySelector('.dim')
   const cmdEl = peerPre?.querySelector('[data-typed]')
   const cmdCaretEl = peerPre?.querySelector('[data-caret]')
   const [envHeadEl, envTailEl, work1El, work2El] = peerPre
-    ? peerPre.querySelectorAll('[data-text]:not([data-typed])')
+    ? peerPre.querySelectorAll('[data-line]:not([data-typed])')
     : []
 
   const required = [
@@ -169,7 +169,11 @@ function initJourney() {
     }
     if (last.youFaded !== state.youFaded) {
       last.youFaded = state.youFaded
-      paneYouEl.classList.toggle('faded', state.youFaded)
+      // Toggled on the wrapper THIS page owns ([data-pane-you]), not on
+      // paneYouEl (Pane.astro's own [data-pane] root) — see Journey.astro's
+      // comment above its enhanced-mode CSS block for why a Journey-scoped
+      // selector can never match Pane's own element, :global() or not.
+      paneYouWrap.classList.toggle('faded', state.youFaded)
     }
     if (last.youActive !== state.youActive) {
       last.youActive = state.youActive

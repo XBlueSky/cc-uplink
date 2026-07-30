@@ -61,15 +61,24 @@ function findTagEnd(html, tagStart) {
  * through the rest of the document, so a data-line span that were ever
  * missing its own data-text couldn't silently pick up a later, unrelated
  * span's attribute instead of failing loudly.
+ *
+ * The `data-line` marker itself is matched with the same attribute-boundary
+ * guard `countAttr` below uses (`data-line` must be followed by whitespace,
+ * `>`, or `=`) rather than a bare `indexOf`. Without that guard this search
+ * also matches `data-line` appearing inside a bundled page `<script>` — e.g.
+ * a CSS-selector string like `'[data-line]:not(...)'`, where "data-line" is
+ * followed by `]`, not an attribute boundary — which is exactly the false
+ * positive that broke this test once enhance.mjs started shipping that
+ * selector (2026-07-30). The guard makes the two indistinguishable-by-eye
+ * cases actually distinguishable.
  */
 function findDataLineSpans(html) {
   const spans = []
-  const lineMarker = 'data-line'
+  const lineMarker = /data-line(?=[\s>=])/g
   const textMarker = 'data-text="'
-  let pos = 0
-  while (true) {
-    const lineIdx = html.indexOf(lineMarker, pos)
-    if (lineIdx === -1) break
+  let match
+  while ((match = lineMarker.exec(html))) {
+    const lineIdx = match.index
 
     const tagStart = html.lastIndexOf('<', lineIdx)
     assert.ok(tagStart !== -1, `no opening tag found before data-line at offset ${lineIdx}`)
@@ -89,7 +98,7 @@ function findDataLineSpans(html) {
     const content = html.slice(tagEnd + 1, spanCloseIdx)
 
     spans.push({ dataText: decodeEntities(dataText), content: decodeEntities(content) })
-    pos = spanCloseIdx + '</span>'.length
+    lineMarker.lastIndex = spanCloseIdx + '</span>'.length
   }
   return spans
 }
