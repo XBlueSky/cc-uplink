@@ -60,6 +60,19 @@ test('landing JavaScript stays under 20 kB gzipped', (t) => {
   const html = readFileSync(join(DIST, 'index.html'), 'utf8')
   const inlineTotal = inlineModuleScriptBytes(html)
 
+  // Non-vacuousness guard: enhance.mjs currently ships as an inline
+  // `<script type="module">` body (see inlineModuleScriptBytes' doc
+  // comment), so this count should never be 0. Without this assertion, if
+  // Astro ever stopped inlining it — external chunking, or an attribute
+  // landing between `type="module"` and `>` so the regex above no longer
+  // matches — inlineModuleScriptBytes would silently return 0 and the
+  // budget check below would keep passing while quietly measuring nothing,
+  // resurrecting the exact undercounting bug this function exists to fix.
+  assert.ok(
+    inlineTotal > 0,
+    'expected at least one inline module script body — did Astro stop inlining enhance.mjs?',
+  )
+
   const total = externalTotal + inlineTotal
   const kb = (total / 1024).toFixed(1)
   assert.ok(
