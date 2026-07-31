@@ -53,6 +53,23 @@ test('the two Instrument Serif woff2 files combined stay under 60 kB', (t) => {
   )
 })
 
+test('the regular Instrument Serif face is preloaded in dist/index.html', (t) => {
+  if (!existsSync(DIST)) return t.skip('run `npm run build` first')
+
+  const indexHtml = readFileSync(join(DIST, 'index.html'), 'utf8')
+  const preloadTags = indexHtml.match(/<link[^>]*rel="preload"[^>]*>/g) ?? []
+  const fontPreload = preloadTags.find((tag) => tag.includes('instrument-serif-regular.woff2'))
+  assert.ok(
+    fontPreload,
+    'dist/index.html has no <link rel="preload"> for instrument-serif-regular.woff2',
+  )
+  assert.ok(fontPreload.includes('as="font"'), 'the preload tag is missing as="font"')
+  assert.ok(
+    !preloadTags.some((tag) => tag.includes('instrument-serif-italic.woff2')),
+    'the italic face should stay lazy (not preloaded) — only the regular face is page-load-critical',
+  )
+})
+
 test('built CSS declares Instrument Serif with font-display: swap', (t) => {
   if (!existsSync(DIST)) return t.skip('run `npm run build` first')
 

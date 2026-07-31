@@ -261,18 +261,27 @@ const REPLY_CMD = "$ tmux send-keys -t %1 -l '[reply id:6b3b20e6] LGTM — one n
    * `.dim`/`.reply`/`.caret` all render INSIDE a Pane's `<pre>` (an
    * instrument, warm-black CRT ground) — the paper-world ink-dim/clay-ink
    * pair used elsewhere on this page would be nearly invisible there.
-   * `#A99364` is Pane.astro's own literal dim-instrument tone (5.64:1 on
-   * --term, see that file's comment); `--green`/`--amber` are the named
+   * `--term-dim` is the shared dim-instrument token (tokens.css has the
+   * full rationale/measurements); `--green`/`--amber` are the named
    * instrument-world phosphor tokens, matching the style tile's `.rep`/
    * `.caret` treatment exactly.
    */
-  .dim { color: #A99364; }
+  .dim { color: var(--term-dim); }
   .reply { color: var(--green); }
   .env { color: var(--signal); }
-  /* 67% of --signal against --term (the peer pane's own ground, not --bg —
-     an instrument-body colour, not paper) clears the 4.5:1 AA floor for
-     content this meaningful (it's the reply instructions). */
-  .envtail { color: color-mix(in srgb, var(--signal) 67%, transparent); }
+  /*
+   * 80% of --signal against --term (the peer pane's own ground — an
+   * instrument-body colour, not paper): 5.60:1 plain, ~5.20:1 against the
+   * scanline's stripe-average ground (Pane.astro's ::after comment has
+   * the stripe math) — both comfortably clear the 4.5:1 AA floor this
+   * content needs (it's the reply instructions). The previous 67% mix
+   * read 4.32:1 plain / ~4.04:1 stripe-average — actually AA-failing on
+   * the measure that governs what a reader sees through the scanlines,
+   * despite an earlier version of this comment claiming 67% cleared AA
+   * (it never did, once the pane ground lightened out from under that
+   * number during the reskin).
+   */
+  .envtail { color: color-mix(in srgb, var(--signal) 80%, transparent); }
 
   /* Caret hooks for the two scroll-typed lines in this section — inert by
      default; the static/flat page already shows each line's full text, so
@@ -475,16 +484,37 @@ const REPLY_CMD = "$ tmux send-keys -t %1 -l '[reply id:6b3b20e6] LGTM — one n
    * Pane focus: the peer pane's `active` state reuses Pane.astro's own
    * `[data-active]` attribute selector (no new CSS needed for that half —
    * enhance.mjs just flips the attribute on the element Pane.astro already
-   * scoped). `.faded` is new here, for the you-pane while the peer has
-   * focus — toggled by enhance.mjs on `[data-pane-you]`, the wrapper THIS
-   * component renders, not on Pane's own `[data-pane]` root (see the
-   * comment above the enhanced block for why that distinction matters:
-   * a selector here can't reach into Pane.astro's own element at all).
+   * scoped). journeyState.mjs sets `youActive = !peerActive && ...`, so
+   * the you-pane's own `[data-active]` already drops to 'false' — plain
+   * `--term-line` border, no amber glow — at exactly the moment `.faded`
+   * (below) turns on; border-color/glow de-emphasis is therefore already
+   * handled by that pre-existing mechanism and needs no new rule here
+   * (and couldn't get one directly even if it did: a selector here can't
+   * reach into Pane.astro's own element at all — see the comment above
+   * the enhanced block for why).
+   *
+   * `.faded` itself used to be `opacity: 0.55` — destructive: opacity
+   * blends the WHOLE element (border and every phosphor text colour
+   * inside it) against whatever is behind it, which on this paper page is
+   * #F5F2E9, not another dark surface. At 55% that wash crushed every
+   * instrument text colour's contrast against the faded pane's own
+   * (also-washed) ground — the exact pairing palette-contrast.test.mjs's
+   * AA gate measures — because blending toward paper moves both the text
+   * and the ground toward the same light colour, collapsing their ratio.
+   * `filter` doesn't have that problem: grayscale()/brightness() transform
+   * the element's own rendered pixels in place, at full opacity, with
+   * nothing of the page behind it showing through — so the pane's
+   * internal text-vs-ground contrast survives de-emphasis far better than
+   * opacity-over-paper ever could. Tuned (computed, not eyeballed) so
+   * every pane text colour the you-pane actually uses stays >=4.5:1
+   * against the faded ground: body #F2E7CF 11.77:1, --term-dim 4.93:1,
+   * --green (reply) 8.77:1 (unfaded baseline: 13.70 / 5.64 / 10.36 —
+   * de-emphasised, still comfortably AA).
    */
   :global(.enhanced) [data-journey] [data-pane-you] {
-    transition: opacity 0.3s;
+    transition: filter 0.3s;
   }
   :global(.enhanced) [data-journey] [data-pane-you].faded {
-    opacity: 0.55;
+    filter: grayscale(0.25) brightness(0.92);
   }
 </style>

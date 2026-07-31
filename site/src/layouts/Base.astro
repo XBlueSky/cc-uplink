@@ -18,6 +18,21 @@ const ogImage = new URL(image, Astro.site).href
     <meta property="og:url" content={Astro.url.href} />
     <meta name="twitter:card" content="summary_large_image" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    {/*
+      Preload the REGULAR Instrument Serif face only — it's the one every
+      h1/h2 on the page needs at first paint (font-display: swap below
+      still covers the flash-of-fallback window on a slow connection; this
+      just shortens it). The italic face has no page-load-critical
+      consumer today, so it stays lazy — fetched on first actual use, not
+      speculatively preloaded for text that may never render.
+    */}
+    <link
+      rel="preload"
+      href="/fonts/instrument-serif-regular.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin
+    />
   </head>
   <body>
     <main><slot /></main>
@@ -79,12 +94,13 @@ const ogImage = new URL(image, Astro.site).href
 
   /*
    * Headings speak the serif voice everywhere on paper. Sizing stays
-   * per-component (each still sets its own --step-* font-size); this
-   * rule only owns family/weight/synthesis. h1 is not bumped a step for
-   * the 400-weight serif — Hero.astro (which sets h1's actual size) is
-   * outside this task's file scope, so there's no clean way to apply a
-   * bump without editing it; left as a follow-up note for whichever task
-   * next touches Hero.astro to reassess once the serif is live.
+   * per-component (each still sets its own --step-N or --h1-size
+   * font-size); this rule only owns family/weight/synthesis. The
+   * 400-weight serif reading visibly lighter than the bold sans it
+   * replaced is handled by tokens.css's --h1-size token (--step-3 times
+   * 1.12 — that token's own comment has the full rationale), consumed by
+   * Hero.astro's h1, the only heading on the page that needs the bump;
+   * every h2 stays at its own --step-2.
    */
   h1, h2 {
     font-family: var(--serif);

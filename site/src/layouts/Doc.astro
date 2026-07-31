@@ -61,6 +61,12 @@ const { title, slug } = Astro.props
    * section: "--manilla ... inline-code fill, tags"), matching the style
    * tile's `.beat-copy .k` chip exactly — no border, ink text (inherited
    * from body colour), small radius.
+   *
+   * Latent pair, not a live bug: if a markdown link ever wrapped an inline
+   * code span (`` [`code`](url) ``), this chip's manilla fill under the
+   * inherited --clay-ink link colour (`.doc :global(a:not(.back))` above)
+   * would measure 4.20:1 — under the 4.5:1 AA floor. No content does that
+   * today, so no CSS change here; flagged for whoever adds the first one.
    */
   .doc :global(:not(pre) > code) {
     padding: 0.1em 0.35em;

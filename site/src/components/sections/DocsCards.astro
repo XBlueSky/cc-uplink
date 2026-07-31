@@ -78,15 +78,28 @@ const cards = [
     display: block;
     border: 1px solid var(--leader);
     padding: var(--space-m);
-    background: rgba(255, 255, 255, .5);
+    background: var(--paper-veil);
     text-decoration: none;
     transition: border-color 0.25s, box-shadow 0.25s;
   }
-  .card:hover,
-  .card:focus-visible {
+  .card:hover {
     border-color: var(--clay);
     box-shadow: 0 2px 12px color-mix(in srgb, var(--clay) 18%, transparent);
-    outline: none;
+  }
+  /*
+   * Focus gets its own visible ring rather than riding this same rule —
+   * the combined `:hover, :focus-visible` selector this replaced also set
+   * `outline: none`, which suppressed keyboard focus entirely (a
+   * border-colour swap alone, without the ring, doesn't read as a focus
+   * indicator). Matches tokens.css's global default value-for-value
+   * (--clay-ink outline, 2px, offset 2px — 5.12:1 against the paper the
+   * ring draws over just outside the card) — kept explicit here, not left
+   * to inherit it, so this stays correct even if the global default ever
+   * changes.
+   */
+  .card:focus-visible {
+    outline: 2px solid var(--clay-ink);
+    outline-offset: 2px;
   }
   .card b {
     display: block;

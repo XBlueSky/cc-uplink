@@ -172,7 +172,7 @@ const driverBoxes = driverLabels.map((label, i) => ({ label, x: driverXs[i] }))
     height: auto;
   }
   .tool-box, .driver-box {
-    fill: rgba(255, 255, 255, .5);
+    fill: var(--paper-veil);
     stroke: var(--ink);
     stroke-width: 1.25;
   }
@@ -219,7 +219,7 @@ const driverBoxes = driverLabels.map((label, i) => ({ label, x: driverXs[i] }))
     font-size: var(--step--1);
     padding: 0.5rem var(--space-s);
     border: 1px solid var(--leader);
-    background: rgba(255, 255, 255, .5);
+    background: var(--paper-veil);
     color: var(--ink);
   }
   .chip.drv {

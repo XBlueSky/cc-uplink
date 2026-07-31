@@ -45,13 +45,30 @@ const { title, active = false } = Astro.props
     transition: border-color 0.3s, box-shadow 0.3s;
   }
   /*
-   * Scanlines: a full-bleed repeating stripe pattern, multiply-blended so
-   * it only ever darkens the term ground beneath it (never lightens text,
-   * so it can only raise contrast against --term, never lower it below
-   * the AA floor palette-contrast.test.mjs asserts). `pointer-events: none`
-   * is load-bearing, not decorative: the pane body's [data-line] spans and
-   * the tabindex="0" <pre> regions (see Journey.astro/InvokeDemo.astro)
-   * must stay clickable/focusable underneath this full-viewport overlay.
+   * Scanlines: a full-bleed repeating stripe pattern, multiply-blended,
+   * painted (as generated content) ON TOP of the pane's own text in paint
+   * order — so it darkens the term ground AND whatever text pixels fall
+   * under a darkened row, not just the ground. That means it CAN lower
+   * contrast on those rows, not only raise it (an earlier version of this
+   * comment claimed multiply could only raise contrast against --term;
+   * false once measured — scaling both foreground and background
+   * luminance down by the same multiplier pulls their ratio toward 1, per
+   * the WCAG contrast formula's +0.05 terms).
+   *
+   * Controller ruling on the AA gate this implies: text antialiases across
+   * multiple stripe rows as it renders, so what a reader actually
+   * perceives is close to the SPATIAL AVERAGE across the repeat (2 of
+   * every 3 rows unmultiplied, 1 multiplied by 0.86 -> average multiplier
+   * ~0.953), not the single darkest row. site/test/palette-contrast.test.mjs
+   * therefore asserts every instrument text colour against both plain
+   * --term AND that stripe-average ground; the darkest-single-row number
+   * is reported in that file's comments as information only, never
+   * asserted — it's a floor no reader's eye actually sits at.
+   *
+   * `pointer-events: none` is load-bearing, not decorative: the pane
+   * body's [data-line] spans and the tabindex="0" <pre> regions (see
+   * Journey.astro/InvokeDemo.astro) must stay clickable/focusable
+   * underneath this full-viewport overlay.
    */
   .pane::after {
     content: '';
@@ -87,12 +104,10 @@ const { title, active = false } = Astro.props
     background: rgba(255, 181, 74, .04);
     font-family: var(--mono);
     font-size: var(--step--1);
-    /* Style tile's `.pane header` literal — a dim warm-khaki tone tuned
-       for legibility on --term (5.64:1, comfortably AA) that isn't one of
-       the named instrument tokens (--amber/--amber-hi/--green carry
-       meaning elsewhere; this is plain chrome text, not phosphor or
-       reply-voice content). */
-    color: #A99364;
+    /* --term-dim — see tokens.css's own comment on that token for the
+       rationale/measurements (shared across every pane-internal dim/chrome
+       text on this site, not just this header). */
+    color: var(--term-dim);
   }
   .pane-title-text {
     min-width: 0;

@@ -100,7 +100,9 @@ const buildDate = new Date().toISOString().slice(0, 10)
     overflow-x: auto;
   }
   /* Clay button, ink label — the install repeat, styled identically to
-     Hero.astro's own `.install button` (see that file's comment). */
+     Hero.astro's own `.install button` (see that file's comment: this is
+     the one sanctioned clay-on-instrument use, tokens.css's Role rule;
+     ink-on-clay measures 5.40:1). */
   .install button {
     flex: none;
     font-family: var(--mono);
@@ -115,9 +117,12 @@ const buildDate = new Date().toISOString().slice(0, 10)
   .install button:hover {
     opacity: 0.85;
   }
+  /* Focus ring: --ink, inset — see Hero.astro's own `.install button:
+     focus-visible` comment for why (the ring's ground is the button's own
+     clay fill, not the surrounding term strip; ink-on-clay 5.40:1). */
   .install button:focus-visible {
-    outline: 2px solid var(--amber);
-    outline-offset: 2px;
+    outline: 2px solid var(--ink);
+    outline-offset: -4px;
   }
   /*
    * Paint-stable copy button — same mechanism/rationale as Hero.astro's own

@@ -51,12 +51,18 @@ import Pane from '../components/Pane.astro'
    * inside .pane-body, an instrument surface) — amber is light in
    * instruments, never clay (tokens.css's Role rule). This is this task's
    * carried Task-1-review finding: these were the old link-accent alias,
-   * which retired entirely per the design spec. #A99364 is the same
-   * literal dim-instrument tone Pane.astro/StatusLine.astro use for their
-   * own chrome text (not a named token — see those files' comments for
-   * why).
+   * which retired entirely per the design spec. `--term-dim` is the same
+   * shared dim-instrument token Pane.astro/StatusLine.astro use for their
+   * own chrome text (see tokens.css's comment on that token).
+   *
+   * `a`'s own `:focus-visible` override is needed too: this link sits on
+   * the pane's instrument ground, and tokens.css's global ring colour is
+   * now --clay-ink — 2.93:1 against --term, under the 3:1 non-text floor.
+   * --amber (already this link's text colour) clears it comfortably
+   * (9.58:1).
    */
   .err { color: var(--amber); }
-  .dim { color: #A99364; }
+  .dim { color: var(--term-dim); }
   a { color: var(--amber); }
+  a:focus-visible { outline-color: var(--amber); }
 </style>

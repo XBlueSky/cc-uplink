@@ -53,15 +53,20 @@ const windows = [
   }
   li { flex: none; }
   /*
-   * Window links stay legible on the dark strip: #A99364 (dim) / #F2E7CF
-   * (hover and current) are the same literal instrument-text tones Pane.astro
-   * uses for its header/body — not named tokens (see that file's comments),
-   * so kept literal here too for the same reason. `aria-current='page'`'s
-   * markup and matching logic (StatusLine's `current` prop, set by
-   * Doc.astro/404.astro) are untouched; only its resolved colour moves from
-   * `--fg` (ink, illegible on dark) to this pair.
+   * Window links stay legible on the dark strip: --term-dim (dim) /
+   * #F2E7CF (hover and current) are the same instrument-text tones
+   * Pane.astro uses for its own header/body (see tokens.css's --term-dim
+   * comment and Pane.astro's own comment on why #F2E7CF stays a literal).
+   * `aria-current='page'`'s markup and matching logic (StatusLine's
+   * `current` prop, set by Doc.astro/404.astro) are untouched.
+   *
+   * `:focus-visible` needs its own override here: this strip is a dark
+   * instrument ground, and tokens.css's global ring colour is now
+   * --clay-ink — 2.93:1 against --term, under the 3:1 non-text floor.
+   * --amber clears it comfortably (9.58:1).
    */
-  a { color: #A99364; text-decoration: none; white-space: nowrap; }
+  a { color: var(--term-dim); text-decoration: none; white-space: nowrap; }
   a:hover { color: #F2E7CF; }
   a[aria-current='page'] { color: #F2E7CF; }
+  a:focus-visible { outline-color: var(--amber); }
 </style>

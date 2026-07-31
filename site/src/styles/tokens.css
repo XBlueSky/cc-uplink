@@ -16,6 +16,13 @@
    *   (and on the §2 signal trace). The two oranges never swap roles —
    *   clay never sits on a dark instrument ground, amber never appears
    *   as body ink on paper.
+   *
+   *   Exception: the install strip's CTA button (Hero.astro's and
+   *   FooterCta.astro's `.install button`) is the ONE sanctioned
+   *   clay-on-instrument use — a paper-world control docked into the
+   *   instrument strip, not instrument chrome itself. Ink-on-clay
+   *   measures 5.40:1, comfortably clearing AA; see those two files'
+   *   own comments on that rule.
    * -----------------------------------------------------------------
    */
 
@@ -28,6 +35,10 @@
   --clay: #D97757;
   --clay-ink: #A34D30;
   --leader: #B09468;
+  /* Paper-world component fill — the faint white-ish veil DocsCards' cards
+     and ToolsGrid's schematic boxes/chips sit on over the paper-grid
+     ground, so those two "component" surfaces read as one family. */
+  --paper-veil: rgba(255, 255, 255, .5);
 
   /* Instrument world (light) */
   --term: #201D16;
@@ -36,6 +47,17 @@
   --amber-hi: #FFD694;
   --signal: #ff9c1b;
   --green: #8ADF7F;
+  /*
+   * Dim instrument chrome/reply-context text: Pane.astro's header line,
+   * StatusLine's window links, and the `.dim` de-emphasis colour
+   * Journey/InvokeDemo/404 all give their pane-internal text point at
+   * this one token instead of repeating the literal hex per file. 5.64:1
+   * against --term (plain); 5.24:1 against the scanline's stripe-average
+   * ground (see palette-contrast.test.mjs's stripe-average assertions and
+   * Pane.astro's ::after comment for that math) — clears AA (>=4.5)
+   * either way.
+   */
+  --term-dim: #A99364;
 
   /* Type: three voices — serif display, sans body, mono instrument */
   --serif: 'Instrument Serif', 'Iowan Old Style', Georgia, serif;
@@ -63,61 +85,23 @@
   --space-xl: 6rem;
 
   /*
-   * -----------------------------------------------------------------
-   * Legacy v2 names — kept alive during the reskin migration.
-   *
-   * This task only touches tokens.css and Base.astro; every component
-   * (Pane, StatusLine, Hero, DocsCards, FooterCta, ToolsGrid, Journey,
-   * InvokeDemo, Doc, 404) still references these v2 names and isn't
-   * migrated to the new ones until Task 2/3. Each alias below is
-   * remapped to its closest ink-and-light equivalent so those
-   * components keep working without editing their CSS:
-   *
-   *   --bg          -> paper (page ground)
-   *   --bg-raised   -> term  (pane/chip/status-bar surfaces stay dark
-   *                    "instruments" this task, per the plan's expected
-   *                    half-skinned mid-state)
-   *   --fg          -> ink     (its dominant caller is page body text)
-   *   --fg-dim      -> ink-dim (ditto, secondary/meta text)
-   *   --accent      -> amber (active-state highlight; instruments get
-   *                    light, not clay — see Role rule above)
-   *   --accent-dim  -> amber (its color-mix() call sites already dim it
-   *                    further)
-   *   --pane-border -> term-line
-   *
-   * Caveat: some of these callers sit directly on the page (now paper)
-   * rather than inside a still-dark pane, so --fg/--fg-dim text there will
-   * read low-contrast until Task 2/3 gives that component its own paper or
-   * instrument treatment. That is the expected half-skinned mid-state, not
-   * a regression introduced here — fixing it means editing component files
-   * outside this task's scope.
-   */
-  --bg: var(--paper);
-  --bg-raised: var(--term);
-  --fg: var(--ink);
-  --fg-dim: var(--ink-dim);
-  --accent: var(--amber);
-  --accent-dim: var(--amber);
-  --pane-border: var(--term-line);
-
-  /*
    * Shiki (astro.config.mjs's `markdown.shikiConfig.theme: 'css-variables'`)
    * paints docs code blocks with these instead of a bundled theme's
    * hardcoded hex, so syntax-highlighted code uses this site's own
    * palette and can be measured against the background it actually
    * renders on. Code blocks and Panes stay dark instruments in this
    * reskin (spec: "code-on-dark is now a design feature, not a
-   * leftover") — deliberately NOT pointed at --fg/--fg-dim, which now
-   * mean dark ink for the paper world and would be almost invisible on
+   * leftover") — deliberately NOT pointed at --ink/--ink-dim, which mean
+   * dark ink for the paper world and would be almost invisible on
    * a dark code background; instead these point straight at the
    * instrument-world tokens (or the instrument body/leader tones also
    * used by Panes), each independently verified >=4.5:1 (WCAG AA)
    * against --term in site/test/palette-contrast.test.mjs (amber, green,
    * and #F2E7CF are asserted there by name; leader was checked by hand
-   * at 5.83:1 — see task-1-report.md) — bypassing the transitional
-   * --accent alias above (and the compatibility link-colour alias Task 4
-   * already deleted) so that alias cleanup couldn't silently break
-   * code-block colours.
+   * at 5.83:1) — pointed straight at --amber/--green rather than through
+   * the transitional accent-highlight alias (deleted along with the rest
+   * of the legacy v2 alias block this same task), so that cleanup could
+   * never silently break code-block colours.
    */
   --astro-code-foreground: #F2E7CF;
   --astro-code-background: var(--term);
@@ -159,9 +143,20 @@ body {
 
 code, pre, .mono { font-family: var(--mono); }
 
-a { color: var(--green); }
+/*
+ * Paper-world default: most anchors and every plain focus ring sit
+ * directly on paper, not inside a dark instrument. --green (the old
+ * default) measures 1.45:1 there — functionally invisible; --clay-ink
+ * is the paper-world ink/link tone (5.1:1 on paper, clears both the 4.5:1
+ * text floor and the 3:1 non-text/ring floor). Components whose anchor or
+ * focusable sits on an instrument ground instead (StatusLine, the 404
+ * pane link, DocsCards' cards, the install-strip button) give their own
+ * :focus-visible/colour override tuned to THEIR ground — see each file's
+ * own comment; --clay-ink there would fall under 3:1.
+ */
+a { color: var(--clay-ink); }
 
 :focus-visible {
-  outline: 2px solid var(--green);
+  outline: 2px solid var(--clay-ink);
   outline-offset: 2px;
 }

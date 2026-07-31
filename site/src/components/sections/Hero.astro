@@ -110,9 +110,14 @@ const marketplaceSlug = marketplaceName ?? pluginName
     color: var(--amber);
     overflow-x: auto;
   }
-  /* Clay button, ink label — the paper accent colour used as a solid-fill
-     control against the dark install strip, same clay/ink pairing as the
-     schematic's own accent usage elsewhere on this page. */
+  /*
+   * Clay button, ink label — the ONE sanctioned clay-on-instrument use on
+   * this page (tokens.css's Role rule carries the same exception note):
+   * the install strip's CTA is a paper-world control docked into the
+   * instrument strip, not instrument chrome itself, so it keeps the
+   * paper-world clay/ink pairing rather than switching to amber-on-term.
+   * Ink-on-clay measures 5.40:1, comfortably AA.
+   */
   .install button {
     flex: none;
     font-family: var(--mono);
@@ -127,9 +132,17 @@ const marketplaceSlug = marketplaceName ?? pluginName
   .install button:hover {
     opacity: 0.85;
   }
+  /*
+   * Focus ring: --ink, inset (a negative offset draws it INSIDE the clay
+   * fill instead of out in the term strip's gap around the button). The
+   * button's own ground is clay, not the surrounding --term strip, so the
+   * ring has to clear 3:1 against clay, not against term — --amber (the
+   * strip's instrument ring colour everywhere else) measures only 1.78:1
+   * there; --ink matches the button's own ink-on-clay pairing, 5.40:1.
+   */
   .install button:focus-visible {
-    outline: 2px solid var(--amber);
-    outline-offset: 2px;
+    outline: 2px solid var(--ink);
+    outline-offset: -4px;
   }
   /*
    * Paint-stable copy button: hidden by CSS, not the `hidden` HTML

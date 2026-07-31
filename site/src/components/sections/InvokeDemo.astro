@@ -83,10 +83,10 @@ const PATHS = '  ⎿ paths: ["~/project/lighthouse.png"]'
 
   .demo { min-width: 0; }
   :global([data-demo] pre) { margin: 0; overflow-x: auto; }
-  /* Inside the Pane's `<pre>` (an instrument ground) — see Journey.astro's
-     identical `.dim` comment for why this is Pane.astro's own literal dim
-     tone rather than the paper-world --ink-dim. */
-  .dim { color: #A99364; }
+  /* Inside the Pane's `<pre>` (an instrument ground) — --term-dim (see
+     tokens.css's comment on that token) rather than the paper-world
+     --ink-dim, which would be nearly invisible on this ground. */
+  .dim { color: var(--term-dim); }
 
   /* Caret hook for the scroll-typed ask line — inert here; enhance.mjs
      drives it via this same file's own
@@ -114,11 +114,15 @@ const PATHS = '  ⎿ paths: ["~/project/lighthouse.png"]'
     width: 100%;
     height: auto;
   }
+  /* --clay-ink measures 4.20:1 against this figure's --manilla mat —
+     under the 4.5:1 AA floor for body-weight text. --ink clears it
+     (12.35:1); the fig-label voice stays clay-ink everywhere else on this
+     page because those all sit on --paper/--leader grounds, not manilla. */
   .artifact figcaption {
     margin-top: var(--space-s);
     font-family: var(--mono);
     font-size: var(--step--1);
-    color: var(--clay-ink);
+    color: var(--ink);
   }
 
   /*
