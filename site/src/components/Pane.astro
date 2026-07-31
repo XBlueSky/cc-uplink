@@ -50,4 +50,19 @@ const { title, active = false } = Astro.props
     line-height: 1.7;
     overflow-x: auto;
   }
+  /*
+   * The storyboard's `.pane pre` wraps long lines
+   * (`white-space: pre-wrap; word-break: break-word`) — without this, the
+   * §2 envelope's reply-instruction tail (the beat-2 teaching content) and
+   * the peer's tmux reply command render as a single line that scrolls
+   * horizontally inside the pane, i.e. they are invisible at rest on every
+   * viewport. The document-level overflow checks never catch this because
+   * `overflow-x: auto` above contains the scroll to the pane itself. Slot
+   * content, hence :global().
+   */
+  .pane-body :global(pre) {
+    margin: 0;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
 </style>
