@@ -148,11 +148,14 @@ code, pre, .mono { font-family: var(--mono); }
  * directly on paper, not inside a dark instrument. --green (the old
  * default) measures 1.45:1 there — functionally invisible; --clay-ink
  * is the paper-world ink/link tone (5.1:1 on paper, clears both the 4.5:1
- * text floor and the 3:1 non-text/ring floor). Components whose anchor or
- * focusable sits on an instrument ground instead (StatusLine, the 404
- * pane link, DocsCards' cards, the install-strip button) give their own
- * :focus-visible/colour override tuned to THEIR ground — see each file's
- * own comment; --clay-ink there would fall under 3:1.
+ * text floor and the 3:1 non-text/ring floor). DocsCards' cards sit on
+ * PAPER (a translucent --paper-veil fill, not an instrument ground) and
+ * keep this default unchanged. Components whose anchor or focusable sits
+ * on an instrument ground instead — StatusLine's links, the 404 pane
+ * link, the install-strip button, and the three tabindex="0" pane `<pre>`
+ * regions (Journey.astro's two panes, InvokeDemo.astro's one) — give
+ * their own :focus-visible/colour override tuned to THEIR ground; see
+ * each file's own comment. --clay-ink there would fall under 3:1.
  */
 a { color: var(--clay-ink); }
 

@@ -123,6 +123,12 @@ test('clay on paper clears the large-text/graphics floor (3:1)', () => {
 })
 
 test('amber on term clears AA (4.5:1)', () => {
+  // This same pairing is also every instrument-ground :focus-visible ring
+  // override on the site (StatusLine's links, the 404 pane link, the
+  // install-strip button, and the three tabindex="0" pane <pre> regions in
+  // Journey.astro/InvokeDemo.astro) — 4.5:1 comfortably clears the 3:1
+  // non-text/ring floor those overrides actually need, so no separate
+  // >=3 assertion is added here for that narrower floor.
   const ratio = contrastRatio(vars.get('amber'), vars.get('term'))
   assert.ok(ratio >= AA, `amber/term is ${ratio.toFixed(2)}:1, want >= ${AA}`)
 })

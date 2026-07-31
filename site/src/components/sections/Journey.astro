@@ -258,6 +258,18 @@ const REPLY_CMD = "$ tmux send-keys -t %1 -l '[reply id:6b3b20e6] LGTM — one n
     overflow-x: auto;
   }
   /*
+   * Both `<pre tabindex="0" role="region">`s are real focusables sitting on
+   * the pane's instrument ground, not paper — tokens.css's global
+   * `:focus-visible` ring is --clay-ink, which measures only 2.93:1
+   * against --term, under the 3:1 non-text floor this same commit enforces
+   * everywhere else (StatusLine, the 404 pane link, the install-strip
+   * button). --amber matches that same pattern (9.58:1 on --term).
+   */
+  :global([data-pane-you] pre:focus-visible),
+  :global([data-pane-peer] pre:focus-visible) {
+    outline-color: var(--amber);
+  }
+  /*
    * `.dim`/`.reply`/`.caret` all render INSIDE a Pane's `<pre>` (an
    * instrument, warm-black CRT ground) — the paper-world ink-dim/clay-ink
    * pair used elsewhere on this page would be nearly invisible there.

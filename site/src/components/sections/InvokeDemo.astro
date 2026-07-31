@@ -83,6 +83,16 @@ const PATHS = '  ⎿ paths: ["~/project/lighthouse.png"]'
 
   .demo { min-width: 0; }
   :global([data-demo] pre) { margin: 0; overflow-x: auto; }
+  /*
+   * This `<pre tabindex="0" role="region">` is a real focusable sitting on
+   * the pane's instrument ground, not paper — tokens.css's global
+   * `:focus-visible` ring is --clay-ink, which measures only 2.93:1
+   * against --term, under the 3:1 non-text floor this same commit enforces
+   * everywhere else (StatusLine, the 404 pane link, the install-strip
+   * button, Journey.astro's own two panes). --amber matches that same
+   * pattern (9.58:1 on --term).
+   */
+  :global([data-demo] pre:focus-visible) { outline-color: var(--amber); }
   /* Inside the Pane's `<pre>` (an instrument ground) — --term-dim (see
      tokens.css's comment on that token) rather than the paper-world
      --ink-dim, which would be nearly invisible on this ground. */
