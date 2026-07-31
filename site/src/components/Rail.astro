@@ -18,20 +18,27 @@
     flex-direction: column;
     gap: 14px;
   }
+  /*
+   * The rail sits directly on the paper page, not inside an instrument —
+   * ticks are ink chrome, not phosphor. `--cyan` (this task's carried
+   * finding from Task 1's review) aliased to `--green`, which measures
+   * 1.45:1 against paper — functionally invisible; `--leader`/`--clay`/
+   * `--ink` are the paper-world tokens that actually clear contrast here.
+   */
   .rail a {
     display: block;
     width: 7px;
     height: 7px;
     border-radius: 1px;
-    background: var(--pane-border);
+    background: var(--leader);
     transition: background 0.25s, transform 0.25s;
   }
   .rail a.on {
-    background: var(--cyan);
+    background: var(--clay);
     transform: scale(1.35);
   }
   .rail a:focus-visible {
-    outline: 1px solid var(--cyan);
+    outline: 1px solid var(--ink);
     outline-offset: 3px;
   }
 

@@ -136,10 +136,18 @@
 
 html { color-scheme: light; }
 
+/*
+ * No background/color here: Base.astro's own global `body { ... }` rule
+ * sets both (paper ground + the two-layer graph grid, ink text) and wins
+ * by emission order — tokens.css loads first, Base.astro's <style
+ * is:global> block after, so a declaration here would never be the one
+ * that actually paints. Keeping it would misrepresent which layer
+ * controls the page background/text colour (carried Task-1-review
+ * finding: this was an unpinned assumption, now made explicit by this
+ * comment and the deletion below).
+ */
 body {
   margin: 0;
-  background: var(--bg);
-  color: var(--fg);
   font-family: var(--sans);
   font-size: var(--step-0);
   line-height: 1.6;
