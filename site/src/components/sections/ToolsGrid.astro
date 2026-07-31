@@ -8,47 +8,74 @@ const drivers = ['tmux', 'image:openai', 'image:codex', '…the next one']
 // ── Architecture mini-schematic geometry ─────────────────────────────────
 // Six tool boxes on a fixed row, a dashed bus, four driver boxes plugged in
 // underneath — computed here rather than hand-placed so the layout can't
-// drift out of sync with `tools`/`drivers` above. viewBox is authored close
-// to the diagram's narrowest real container (a 390px viewport, minus this
-// section's own padding) so labels stay legible there without the SVG ever
-// growing large enough on wide screens to look like a poster (the CSS caps
-// its rendered width — see the <style> block below).
-const VB_W = 440
-const VB_H = 190
-const BUS_Y = 96
+// drift out of sync with `tools`/`drivers` above.
+//
+// Fix-round Nit 5+6: box widths are DERIVED from each row's own longest
+// label at the declared font size, not a hand-picked constant — the
+// previous fixed `TOOL_BOX_W = 66` had the longest label ("DESCRIBE") at
+// 58 of 66 available units, a margin so tight that any future tool/driver
+// name a couple of characters longer would have silently overflowed its
+// box with no build-time signal. `CHAR_W = 0.6` is not a guess: it's this
+// exact mono stack's own measured advance width, back-derived from that
+// same "58 units for 8 chars at font-size 12" figure the review flagged
+// (58 / (8 * 12) = 0.604).
+const TOOL_LABEL_SIZE = 13
+const CHAR_W = 0.6
+const BOX_PAD = 10 // total horizontal padding inside a box, both sides
+const GAP = 8 // gap between boxes, and from the row's own edges
 
-/**
- * Evenly spaces `n` boxes of width `boxW` across `0..VB_W`, with `n + 1`
- * equal gaps (margins included) — the same "distribute the remainder"
- * layout `.chips`'s own flexbox does automatically, just computed in the
- * frontmatter since these coordinates have to be static SVG attributes.
- */
-function layoutRow(n, boxW) {
-  const gap = (VB_W - n * boxW) / (n + 1)
-  return Array.from({ length: n }, (_, i) => gap + i * (boxW + gap))
+/** Width (in viewBox units) a box needs to fit its widest label without clipping. */
+function deriveBoxWidth(labels, fontSize) {
+  const maxLen = Math.max(...labels.map((l) => l.length))
+  return Math.ceil(maxLen * fontSize * CHAR_W) + BOX_PAD
 }
 
-const TOOL_BOX_W = 66
-const TOOL_BOX_H = 32
-const TOOL_Y = 16
-const toolXs = layoutRow(tools.length, TOOL_BOX_W)
 // Box labels drop the shared "channel_" prefix (every one of the six tools
 // carries it) so the short suffix fits a box this size at a legible font —
 // the full name is never lost, it's one line down in the accessible
-// `<ul class="chips">` list this diagram sits above.
-const toolBoxes = tools.map((tool, i) => ({
-  label: tool.replace(/^channel_/, '').toUpperCase(),
-  x: toolXs[i],
-}))
+// `<ul class="chips">` list this diagram sits above. Same idea for drivers
+// (`image:` prefix stripped).
+const toolLabels = tools.map((tool) => tool.replace(/^channel_/, '').toUpperCase())
+const driverLabels = drivers.map((driver) =>
+  driver.replace(/^image:/, '').replace('…the next one', '+ next').toUpperCase(),
+)
 
-const DRIVER_BOX_W = 88
+const TOOL_BOX_W = deriveBoxWidth(toolLabels, TOOL_LABEL_SIZE)
+const DRIVER_BOX_W = deriveBoxWidth(driverLabels, TOOL_LABEL_SIZE)
+const TOOL_BOX_H = 32
+const TOOL_Y = 16
 const DRIVER_BOX_H = 30
 const DRIVER_Y = 142
-const driverXs = layoutRow(drivers.length, DRIVER_BOX_W)
-const driverBoxes = drivers.map((driver, i) => ({
-  label: driver.replace(/^image:/, '').replace('…the next one', '+ next').toUpperCase(),
-  x: driverXs[i],
-}))
+const BUS_Y = 96
+const VB_H = 190
+
+// Each row's own natural width (its boxes + gaps, no outer margin logic
+// beyond GAP itself); the viewBox is exactly the wider of the two, so
+// neither row is ever cropped, and the narrower row is centred inside it
+// below.
+const toolRowW = toolLabels.length * TOOL_BOX_W + (toolLabels.length + 1) * GAP
+const driverRowW = driverLabels.length * DRIVER_BOX_W + (driverLabels.length + 1) * GAP
+const VB_W = Math.max(toolRowW, driverRowW)
+
+/**
+ * Evenly spaces `n` boxes of width `boxW` across a row of width `rowW`,
+ * with `n + 1` equal gaps (margins included), then centres that whole row
+ * within the shared `VB_W` if it's narrower than the other row — the same
+ * "distribute the remainder" layout `.chips`'s own flexbox does
+ * automatically, just computed in the frontmatter since these coordinates
+ * have to be static SVG attributes.
+ */
+function layoutRow(n, boxW, rowW) {
+  const gap = (rowW - n * boxW) / (n + 1)
+  const offset = (VB_W - rowW) / 2
+  return Array.from({ length: n }, (_, i) => offset + gap + i * (boxW + gap))
+}
+
+const toolXs = layoutRow(toolLabels.length, TOOL_BOX_W, toolRowW)
+const toolBoxes = toolLabels.map((label, i) => ({ label, x: toolXs[i] }))
+
+const driverXs = layoutRow(driverLabels.length, DRIVER_BOX_W, driverRowW)
+const driverBoxes = driverLabels.map((label, i) => ({ label, x: driverXs[i] }))
 ---
 <section class="tools-sec" id="tools" aria-labelledby="tools-heading">
   <div>
@@ -129,11 +156,11 @@ const driverBoxes = drivers.map((driver, i) => ({
   /*
    * The architecture mini-schematic (design spec §4/ToolsGrid, ref-1's own
    * fig-2 framing): ink strokes for the boxes/bus stubs, clay-ink labels,
-   * a dashed leader-toned bus spine. Capped at a moderate max-width so it
-   * reads as a compact instrument diagram rather than a full-bleed poster
-   * on wide screens; `vector-effect="non-scaling-stroke"` (set per-shape
-   * above) keeps every stroke a constant on-screen weight regardless of
-   * how much the viewBox scales up or down to fill that width.
+   * a dashed bus spine. Capped at a moderate max-width so it reads as a
+   * compact instrument diagram rather than a full-bleed poster on wide
+   * screens; `vector-effect="non-scaling-stroke"` (set per-shape above)
+   * keeps every stroke a constant on-screen weight regardless of how much
+   * the viewBox scales up or down to fill that width.
    */
   .schematic {
     max-width: 460px;
@@ -156,14 +183,20 @@ const driverBoxes = drivers.map((driver, i) => ({
     stroke: var(--ink);
     stroke-width: 1.1;
   }
+  /*
+   * Fix-round Minor 3: was `--leader` (2.58:1 against paper) — the same
+   * token this branch's Rail.astro carried-item fix ruled out on WCAG
+   * 1.4.11 non-text-contrast grounds (a 3:1 floor). `--ink-dim` (4.8:1)
+   * clears it with room to spare; labels stay clay-ink, unaffected.
+   */
   .bus {
-    stroke: var(--leader);
+    stroke: var(--ink-dim);
     stroke-width: 1.6;
     stroke-dasharray: 5 4;
   }
   .tool-label, .driver-label {
     font-family: var(--mono);
-    font-size: 12px;
+    font-size: 13px;
     fill: var(--clay-ink);
   }
 

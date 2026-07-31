@@ -5,7 +5,7 @@ const { title, active = false } = Astro.props
   {title && (
     <header class="pane-title">
       <span class="pane-title-text">{title}</span>
-      <!--
+      {/*
         Two decorative "LED" dots — ref-2-frame-exchange.png's terminal
         chrome, ported as plain CSS circles (no images, no new script).
         aria-hidden because they carry no state a screen reader visitor
@@ -13,7 +13,7 @@ const { title, active = false } = Astro.props
         these from JS. They sit in the header's flex row opposite the
         title text (title left, LEDs right) — see .pane-title's
         `justify-content: space-between` below.
-      -->
+      */}
       <span class="pane-leds" aria-hidden="true">
         <span class="led led-amber"></span>
         <span class="led led-green"></span>

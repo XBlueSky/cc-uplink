@@ -4,21 +4,21 @@ import StatusLine from '../components/StatusLine.astro'
 import Pane from '../components/Pane.astro'
 ---
 
-<!-- Without this file Cloudflare Pages assumes the site is an SPA and rewrites
+{/* Without this file Cloudflare Pages assumes the site is an SPA and rewrites
      every unknown path to /index.html with HTTP 200. Shipping dist/404.html is
      what makes Pages answer misses with a real 404 status; dist-guard.test.mjs
-     asserts it exists so the SPA fallback can never quietly come back. -->
+     asserts it exists so the SPA fallback can never quietly come back. */}
 <Base
   title="404 — cc-uplink"
   description="No such pane. The path you followed does not exist on this session."
 >
   <StatusLine />
   <div class="wrap">
-    <!-- Paper page, instrument Pane: the headline lives out here on paper
+    {/* Paper page, instrument Pane: the headline lives out here on paper
          (serif, per Base.astro's global h1/h2 rule) — an <h1> inside the
          Pane below would still pick up that global rule (it isn't scoped
          to outside-the-pane content) and read wrong, since instrument text
-         is mono everywhere else on this site. -->
+         is mono everywhere else on this site. */}
     <p class="tag">404</p>
     <h1>No such pane</h1>
     <Pane title="tmux — find-window" active={true}>

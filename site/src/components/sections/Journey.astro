@@ -25,7 +25,7 @@ const WORK2 = '> retry.rs:41 swallows the error cause'
 const REPLY_CMD = "$ tmux send-keys -t %1 -l '[reply id:6b3b20e6] LGTM — one nit: retry.rs:41 swallows the error cause' \\; send-keys -t %1 Enter"
 ---
 <section id="journey" data-journey aria-label="signal journey">
-  <!--
+  {/*
     Always present, regardless of flat/enhanced — the flat page's two <pre>
     panes are themselves readable, so this is a plain-language summary
     layered in front of them, not a replacement. In enhanced mode
@@ -34,7 +34,7 @@ const REPLY_CMD = "$ tmux send-keys -t %1 -l '[reply id:6b3b20e6] LGTM — one n
     as it happens); this paragraph is what stays describing the exchange
     for that visitor, and it never depends on JS to exist or to be visible
     to sighted users — CSS clips it unconditionally.
-  -->
+  */}
   <p class="sr-only">
     Transcript: you ask codex, running in the pane next door, to review your
     diff via <span class="k">channel_send</span>. cc-uplink delivers the
@@ -61,6 +61,54 @@ const REPLY_CMD = "$ tmux send-keys -t %1 -l '[reply id:6b3b20e6] LGTM — one n
 <span class="reply" data-line data-text={REPLY}>{REPLY}</span></pre>
               </Pane>
             </div>
+            {/*
+              The trace is a real GRID ITEM occupying its own row between
+              the two panes (see `.panes { grid-template-rows: auto Npx
+              auto }` below) — not absolutely positioned against `.panes`'
+              overall midpoint. That midpoint drifted onto the peer pane's
+              own border on the return leg (fix-round Major 1): the peer
+              pane grows ~50px as its envelope/work lines reveal, so a
+              midpoint computed from the CONTAINER's total height stopped
+              matching the actual visual gap between the two panes once
+              their heights diverged. A dedicated row is exactly as tall as
+              the gap, always, regardless of how either pane's content
+              height changes during the scrub — DOM order here (between
+              the two pane wrappers, not after both) is what makes the
+              grid's default row auto-placement put it in the middle row
+              without needing explicit `grid-row` on every item.
+            */}
+            <div class="beam" data-beam aria-hidden="true">
+              {/*
+                The signal trace (ref-2-frame-exchange.png's shape, ported to
+                this section's vertically-stacked panes): a stub down from
+                the you-pane's edge, a long horizontal dashed run, a stub
+                down into the peer-pane's edge. `preserveAspectRatio="none"`
+                stretches the run to the `.beam` box's actual width — the
+                same box `initJourney`'s packet math (site/src/scripts/
+                enhance.mjs) reads via `beamEl.clientWidth`, so the run
+                always spans exactly where the packet travels, at any
+                viewport width. The run/stubs now span the FULL 0..400
+                viewBox width (fix-round Nit 7) — previously 14..386, which
+                undershot the packet's own travel range (0..clientWidth,
+                the whole box) and let the packet overrun the trace's
+                corners at both leg extremes. `overflow: visible` (below)
+                lets the two arrow tips draw slightly outside the viewBox's
+                own 0..40 bounds without being clipped.
+              */}
+              <svg class="trace" viewBox="0 0 400 40" preserveAspectRatio="none" aria-hidden="true">
+                <path class="trace-run" d="M0,0 L0,20 L400,20 L400,40" vector-effect="non-scaling-stroke" />
+                {/*
+                  Two arrowheads, one per direction — the sanctioned JS
+                  exception (enhance.mjs) toggles `.return` on this SVG's
+                  `[data-beam]` ancestor exactly when the travelling packet's
+                  text flips from the outbound to the return wire string; the
+                  opacity swap below is pure CSS from that one class.
+                */}
+                <path class="trace-arrow arrow-out" d="M392,34 L400,44 L408,34" vector-effect="non-scaling-stroke" />
+                <path class="trace-arrow arrow-back" d="M-8,6 L0,-4 L8,6" vector-effect="non-scaling-stroke" />
+              </svg>
+              <span class="packet" data-packet></span>
+            </div>
             <div data-pane-peer>
               <Pane title="tmux:%3 — codex (peer)">
                 <pre tabindex="0" role="region" aria-label="tmux pane contents: the peer's side of the exchange, including the injected envelope"><span class="dim" data-peer-idle>{IDLE}</span>
@@ -70,42 +118,14 @@ const REPLY_CMD = "$ tmux send-keys -t %1 -l '[reply id:6b3b20e6] LGTM — one n
 <span data-line data-typed data-text={REPLY_CMD}>{REPLY_CMD}</span><span class="caret" data-caret aria-hidden="true">▊</span></pre>
               </Pane>
             </div>
-            <div class="beam" data-beam aria-hidden="true">
-              <!--
-                The signal trace (ref-2-frame-exchange.png's shape, ported to
-                this section's vertically-stacked panes): a stub down from
-                the you-pane's edge, a long horizontal dashed run, a stub
-                down into the peer-pane's edge. `preserveAspectRatio="none"`
-                stretches the run to the `.beam` box's actual width — the
-                same box `initJourney`'s packet math (site/src/scripts/
-                enhance.mjs) reads via `beamEl.clientWidth`, so the run
-                always spans exactly where the packet travels, at any
-                viewport width. `overflow: visible` (below) lets the two
-                arrow tips draw slightly outside the viewBox's own 0..40
-                bounds without being clipped.
-              -->
-              <svg class="trace" viewBox="0 0 400 40" preserveAspectRatio="none" aria-hidden="true">
-                <path class="trace-run" d="M14,0 L14,20 L386,20 L386,40" />
-                <!--
-                  Two arrowheads, one per direction — the sanctioned JS
-                  exception (enhance.mjs) toggles `.return` on this SVG's
-                  `[data-beam]` ancestor exactly when the travelling packet's
-                  text flips from the outbound to the return wire string; the
-                  opacity swap below is pure CSS from that one class.
-                -->
-                <path class="trace-arrow arrow-out" d="M378,34 L386,44 L394,34" />
-                <path class="trace-arrow arrow-back" d="M6,6 L14,-4 L22,6" />
-              </svg>
-              <span class="packet" data-packet></span>
-            </div>
           </div>
         </div>
       </div>
     </div>
 
-    <!-- source-line wrapping below is deliberate: a newline adjacent to a
+    {/* source-line wrapping below is deliberate: a newline adjacent to a
          tag edge collapses to zero-width, not a space, so every wrap point
-         is kept between two plain words instead of touching a <span> edge -->
+         is kept between two plain words instead of touching a <span> edge */}
     <div class="copy" data-beat-copy>
       <h2>A peer, in the pane next door</h2>
       <p>
@@ -164,7 +184,19 @@ const REPLY_CMD = "$ tmux send-keys -t %1 -l '[reply id:6b3b20e6] LGTM — one n
     justify-content: center;
   }
   .frame { width: min(640px, 92vw); position: relative; }
-  .panes { display: grid; gap: var(--space-l); position: relative; }
+  /*
+   * Fix-round Major 1: the middle row IS the trace's row — `.beam` is a
+   * real grid item placed there by DOM order (see the markup comment
+   * above it), not an absolutely-positioned overlay anchored to `.panes`'
+   * overall midpoint. That midpoint drifted onto the peer pane once its
+   * height diverged from the you-pane's during the scrub (the peer pane
+   * grows ~50px as its lines reveal); a dedicated 56px row is exactly the
+   * gap between the two panes' actual rendered edges at every frame,
+   * which no longer depends on the two panes staying the same height.
+   * `gap` is gone — the middle row supplies the spacing that used to come
+   * from it.
+   */
+  .panes { display: grid; grid-template-rows: auto 56px auto; position: relative; }
   /*
    * Same fix, same reason, as Hero.astro's `.copy { min-width: 0; }`
    * comment (see that file): grid items default to `min-width: auto`,
@@ -246,24 +278,23 @@ const REPLY_CMD = "$ tmux send-keys -t %1 -l '[reply id:6b3b20e6] LGTM — one n
 
   /*
    * The signal beam is now a schematic trace (ref-2-frame-exchange.png),
-   * not a neon gradient bar — see the SVG markup above. `height: 56px`
-   * (up from the old 2px hairline) gives the SVG's two vertical stubs room
-   * to draw without the arrow tips clipping; `top: calc(50% - 28px)` keeps
-   * the box centred on the same midline the old 2px bar sat on, so this is
-   * a like-for-like swap of what fills the gap between the two panes, not
-   * a repositioning. Width (`left`/`right`) is UNCHANGED — that's the box
-   * `initJourney`'s packet math reads via `clientWidth` (site/src/scripts/
-   * enhance.mjs), and the SVG's `preserveAspectRatio="none"` run stretches
-   * to fill exactly that width, so the packet keeps riding the trace it's
-   * drawn on at any viewport size.
+   * not a neon gradient bar — see the SVG markup above. As a grid item
+   * (see `.panes`'s own comment for why), `.beam`'s height comes for free
+   * from its 56px row track; `width: 84%; margin: 0 auto` reproduces the
+   * old `left: 8%; right: 8%` inset (100% − 8% − 8% = 84%, centred) within
+   * whatever the track's own width is — same effective width `initJourney`'s
+   * packet math reads via `clientWidth` (site/src/scripts/enhance.mjs), so
+   * the SVG's `preserveAspectRatio="none"` run still stretches to fill
+   * exactly the box the packet travels across, at any viewport size.
+   * `position: relative` (not `absolute` — this is a normal grid item now)
+   * is what the child `.trace`'s `position: absolute; inset: 0` anchors to.
    */
   .beam {
     display: none;
-    position: absolute;
-    left: 8%;
-    right: 8%;
-    top: calc(50% - 28px);
-    height: 56px;
+    position: relative;
+    width: 84%;
+    height: 100%;
+    margin: 0 auto;
     pointer-events: none;
   }
   .trace {
