@@ -23,3 +23,72 @@ const ogImage = new URL(image, Astro.site).href
     <main><slot /></main>
   </body>
 </html>
+
+<style is:global>
+  /*
+   * Instrument Serif — self-hosted at /fonts (site/public/fonts/), OFL
+   * licensed (OFL.txt alongside). Display voice for h1/h2 on paper only;
+   * has no bold weight, so headings use size for hierarchy, not weight
+   * (font-synthesis: none below stops the browser from faking one).
+   * `is:global` is required here: h1/h2 and body live in child
+   * components rendered through <slot />, outside Base.astro's own
+   * scoped-CSS domain, so a scoped style wouldn't reach them.
+   */
+  @font-face {
+    font-family: 'Instrument Serif';
+    src: url('/fonts/instrument-serif-regular.woff2') format('woff2');
+    font-weight: 400;
+    font-style: normal;
+    font-display: swap;
+    unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+2000-206F,
+      U+2074, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+  }
+
+  @font-face {
+    font-family: 'Instrument Serif';
+    src: url('/fonts/instrument-serif-italic.woff2') format('woff2');
+    font-weight: 400;
+    font-style: italic;
+    font-display: swap;
+    unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+2000-206F,
+      U+2074, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+  }
+
+  /*
+   * Page ground: paper + a two-layer graph grid (24px fine line, 120px
+   * major line every 5th), values copied verbatim from the style tile
+   * (docs/superpowers/design/2026-07-31-style-tile.html)'s body
+   * background-image block — the source of truth for this texture.
+   * background-color/color are declared explicitly here (not left to
+   * tokens.css's --bg/--fg aliases) so page ground doesn't depend on
+   * stylesheet load order between tokens.css and this block.
+   * `background-attachment: fixed` is intentionally omitted — the style
+   * tile reference doesn't use it either, and the spec flags it as a
+   * known Safari scroll-performance risk to test before adding.
+   */
+  body {
+    background-color: var(--paper);
+    background-image:
+      linear-gradient(rgba(120, 100, 70, .13) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(120, 100, 70, .13) 1px, transparent 1px),
+      linear-gradient(rgba(120, 100, 70, .2) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(120, 100, 70, .2) 1px, transparent 1px);
+    background-size: 24px 24px, 24px 24px, 120px 120px, 120px 120px;
+    color: var(--ink);
+  }
+
+  /*
+   * Headings speak the serif voice everywhere on paper. Sizing stays
+   * per-component (each still sets its own --step-* font-size); this
+   * rule only owns family/weight/synthesis. h1 is not bumped a step for
+   * the 400-weight serif — Hero.astro (which sets h1's actual size) is
+   * outside this task's file scope, so there's no clean way to apply a
+   * bump without editing it; left as a follow-up note for whichever task
+   * next touches Hero.astro to reassess once the serif is live.
+   */
+  h1, h2 {
+    font-family: var(--serif);
+    font-weight: 400;
+    font-synthesis: none;
+  }
+</style>

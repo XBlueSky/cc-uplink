@@ -1,5 +1,36 @@
-import { LUM_CEILING } from '../lib/contrast.mjs'
 import fragmentSource from './shaders/ambience.frag?raw'
+
+/*
+ * Inlined from the now-deleted src/lib/contrast.mjs (Task 1 of the
+ * ink-and-light reskin deletes that file; this shader is slated for
+ * removal in a later task, but until then it still needs the exact same
+ * LUM_CEILING it always used). Same math, same hardcoded FG anchor
+ * (#e6e9f0 — the pre-reskin --fg, not tokens.css's Task-1 remap), same
+ * resulting constant — a pure copy, not a behaviour change. See
+ * site/test/contrast-ceiling.test.mjs for the sibling copy guarding this
+ * same math via tests.
+ */
+const AMBIENCE_FG = '#e6e9f0'
+
+function srgbToLinear(channel) {
+  const s = channel / 255
+  return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4
+}
+
+function relativeLuminance(hex) {
+  const n = Number.parseInt(hex.replace('#', ''), 16)
+  const r = (n >> 16) & 0xff
+  const g = (n >> 8) & 0xff
+  const b = n & 0xff
+  return 0.2126 * srgbToLinear(r) + 0.7152 * srgbToLinear(g) + 0.0722 * srgbToLinear(b)
+}
+
+/** The highest background relative luminance that still holds `ratio` against `fgHex`. */
+function maxBackgroundLuminance(fgHex = AMBIENCE_FG, ratio = 4.5) {
+  return (relativeLuminance(fgHex) + 0.05) / ratio - 0.05
+}
+
+const LUM_CEILING = maxBackgroundLuminance()
 
 const VERTEX_SOURCE = `
 attribute vec2 aPosition;

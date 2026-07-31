@@ -1,18 +1,44 @@
 :root {
-  --bg: #06070c;
-  --bg-raised: #0a0c14;
-  --fg: #e6e9f0;
-  --fg-dim: #8b93a7;
-  --accent: #5b7cfa;
-  --accent-dim: #2e3f7d;
-  --cyan: #58c5d4;
-  --pane-border: #1c2130;
+  /*
+   * -----------------------------------------------------------------
+   * "Ink and light" — cc-uplink is a warm ivory engineering drawing.
+   * Two worlds share the page:
+   *
+   *   Paper world (ink): everything printed ON the paper — headings,
+   *   body copy, leader lines, FIG labels, title blocks — speaks warm
+   *   ink-black and terracotta clay.
+   *
+   *   Instrument world (light): terminal Panes are instruments embedded
+   *   in the drawing — warm-black CRTs with amber phosphor text, the
+   *   only sources of light on the page.
+   *
+   *   Role rule: clay is ink on paper; amber is light in instruments
+   *   (and on the §2 signal trace). The two oranges never swap roles —
+   *   clay never sits on a dark instrument ground, amber never appears
+   *   as body ink on paper.
+   * -----------------------------------------------------------------
+   */
 
-  /* The brand's one warm accent — used for §2's journey beam/packet and the
-     envelope lines it carries (Journey.astro's `.beam`, `.packet`, `.env`,
-     `.envtail`). */
+  /* Paper world (ink) */
+  --paper: #F5F2E9;
+  --paper-2: #EDE8DA;
+  --manilla: #EBDBBC;
+  --ink: #1F1D17;
+  --ink-dim: #6D6455;
+  --clay: #D97757;
+  --clay-ink: #A34D30;
+  --leader: #B09468;
+
+  /* Instrument world (light) */
+  --term: #201D16;
+  --term-line: #3D341D;
+  --amber: #FFB54A;
+  --amber-hi: #FFD694;
   --signal: #ff9c1b;
+  --green: #8ADF7F;
 
+  /* Type: three voices — serif display, sans body, mono instrument */
+  --serif: 'Instrument Serif', 'Iowan Old Style', Georgia, serif;
   --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace;
   --sans: -apple-system, BlinkMacSystemFont, "Inter", system-ui, sans-serif;
 
@@ -28,28 +54,77 @@
   --space-xl: 6rem;
 
   /*
+   * -----------------------------------------------------------------
+   * Legacy v2 names — kept alive during the reskin migration.
+   *
+   * This task only touches tokens.css and Base.astro; every component
+   * (Pane, StatusLine, Hero, DocsCards, FooterCta, ToolsGrid, Journey,
+   * InvokeDemo, Doc, 404) still references these v2 names and isn't
+   * migrated to the new ones until Task 2/3. Each alias below is
+   * remapped to its closest ink-and-light equivalent so those
+   * components keep working without editing their CSS:
+   *
+   *   --bg          -> paper (page ground)
+   *   --bg-raised   -> term  (pane/chip/status-bar surfaces stay dark
+   *                    "instruments" this task, per the plan's expected
+   *                    half-skinned mid-state)
+   *   --fg          -> ink     (its dominant caller is page body text)
+   *   --fg-dim      -> ink-dim (ditto, secondary/meta text)
+   *   --accent      -> amber (active-state highlight; instruments get
+   *                    light, not clay — see Role rule above)
+   *   --accent-dim  -> amber (Ambience's low-opacity wash; its
+   *                    color-mix() call sites already dim it further)
+   *   --pane-border -> term-line
+   *   --cyan        -> green, a *compatibility alias only* for this
+   *                    task (spec: "Cyan retires entirely"). Task 2/3
+   *                    replace each --cyan call site with its real
+   *                    per-component colour (e.g. clay-ink on 404,
+   *                    amber on StatusLine, since StatusLine is an
+   *                    instrument) and Task 4 deletes this alias.
+   *
+   * Caveat: some of these callers sit directly on the page (now paper)
+   * rather than inside a still-dark pane, so --fg/--fg-dim/--cyan text
+   * there will read low-contrast until Task 2/3 gives that component
+   * its own paper or instrument treatment. That is the expected
+   * half-skinned mid-state, not a regression introduced here — fixing
+   * it means editing component files outside this task's scope.
+   */
+  --bg: var(--paper);
+  --bg-raised: var(--term);
+  --fg: var(--ink);
+  --fg-dim: var(--ink-dim);
+  --accent: var(--amber);
+  --accent-dim: var(--amber);
+  --pane-border: var(--term-line);
+  --cyan: var(--green);
+
+  /*
    * Shiki (astro.config.mjs's `markdown.shikiConfig.theme: 'css-variables'`)
    * paints docs code blocks with these instead of a bundled theme's
-   * hardcoded hex, so syntax-highlighted code uses this site's own palette
-   * and can be measured against the background it actually renders on
-   * (--bg-raised, same as Doc.astro's `.doc pre`). Every one of these is
-   * >=4.5:1 (WCAG AA) against --bg-raised — verified in
-   * site/test/contrast.test.mjs, not eyeballed. Where an existing token
-   * already cleared the floor it is reused rather than duplicated (comment,
-   * keyword, string all point at --fg-dim/--accent/--cyan); constant,
-   * function, inserted, and deleted have no existing equivalent so are
-   * defined here specifically for code, chosen from the same cool-with-one-
-   * warm-accent family as the rest of the palette.
+   * hardcoded hex, so syntax-highlighted code uses this site's own
+   * palette and can be measured against the background it actually
+   * renders on. Code blocks and Panes stay dark instruments in this
+   * reskin (spec: "code-on-dark is now a design feature, not a
+   * leftover") — deliberately NOT pointed at --fg/--fg-dim, which now
+   * mean dark ink for the paper world and would be almost invisible on
+   * a dark code background; instead these point straight at the
+   * instrument-world tokens (or the instrument body/leader tones also
+   * used by Panes), each independently verified >=4.5:1 (WCAG AA)
+   * against --term in site/test/palette-contrast.test.mjs (amber, green,
+   * and #F2E7CF are asserted there by name; leader was checked by hand
+   * at 5.83:1 — see task-1-report.md) — bypassing the transitional
+   * --accent/--cyan aliases above so Task 4 deleting --cyan can't
+   * silently break code-block colours.
    */
-  --astro-code-foreground: var(--fg);
-  --astro-code-background: var(--bg-raised);
-  --astro-code-token-comment: var(--fg-dim);
-  --astro-code-token-keyword: var(--accent);
-  --astro-code-token-string: var(--cyan);
-  --astro-code-token-string-expression: var(--cyan);
-  --astro-code-token-parameter: var(--cyan);
-  --astro-code-token-link: var(--cyan);
-  --astro-code-token-punctuation: var(--fg-dim);
+  --astro-code-foreground: #F2E7CF;
+  --astro-code-background: var(--term);
+  --astro-code-token-comment: var(--leader);
+  --astro-code-token-keyword: var(--amber);
+  --astro-code-token-string: var(--green);
+  --astro-code-token-string-expression: var(--green);
+  --astro-code-token-parameter: var(--green);
+  --astro-code-token-link: var(--green);
+  --astro-code-token-punctuation: var(--leader);
   --astro-code-token-constant: #e0a458;
   --astro-code-token-function: #b98bd6;
   --astro-code-token-inserted: #7ec699;
@@ -59,7 +134,7 @@
 
 *, *::before, *::after { box-sizing: border-box; }
 
-html { color-scheme: dark; }
+html { color-scheme: light; }
 
 body {
   margin: 0;
