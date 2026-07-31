@@ -1,13 +1,34 @@
 ---
+import FigHeader from '../FigHeader.astro'
+
 const { release, repo, pluginName, marketplaceName } = Astro.props
 // Same marketplace-name-vs-plugin-name distinction as Hero.astro — see that
 // file for why the fallback exists.
 const marketplaceSlug = marketplaceName ?? pluginName
 const repoUrl = `https://github.com/${repo}`
+
+// Build-time only — this is Astro frontmatter, which runs once per static
+// build (SSG), not per-request, so `new Date()` here is the build date, not
+// a visitor's local clock. Matches the title block's own DATE cell format
+// (ref-2-frame-exchange.png's title block, YYYY-MM-DD via ISO 8601's own
+// slice).
+const buildDate = new Date().toISOString().slice(0, 10)
 ---
 <footer id="end" aria-labelledby="footer-heading">
+  <div class="fig-wrap"><FigHeader n={6} title="INSTALL" /></div>
   <div data-reveal>
     <h2 id="footer-heading">Open a channel</h2>
+    <!--
+      Title block strip (ref-2-frame-exchange.png's own bottom-right table,
+      collapsed to one bordered mono row) — aria-hidden because every fact
+      in it duplicates something already readable elsewhere on the page
+      (release tag in `.meta` below, current date implicit in "latest
+      release"), so it's decorative drawing-set framing, not new
+      information a screen reader visitor is missing.
+    -->
+    <p class="title-block" aria-hidden="true">
+      DWG NO CC-UPLINK · REV {release.tag} · DATE {buildDate} · SHEET 1/1
+    </p>
     <div class="install">
       <pre><code>/plugin marketplace add {repo}
 /plugin install {pluginName}@{marketplaceSlug}</code></pre>
@@ -28,7 +49,25 @@ const repoUrl = `https://github.com/${repo}`
     text-align: center;
     position: relative;
   }
+  .fig-wrap { max-width: 1200px; margin: 0 auto; }
   h2 { font-size: var(--step-2); line-height: 1.1; margin: 0 0 var(--space-l); }
+  /*
+   * Title block strip (ref-2-frame-exchange.png's DWG NO/REV/DATE/SHEET
+   * table, collapsed to one row) — a bordered mono line above the install
+   * repeat, same instrument-adjacent chrome language as a Pane's own
+   * header but sitting on paper, so it uses the paper-world leader border
+   * rather than a term-line one.
+   */
+  .title-block {
+    display: inline-block;
+    margin: 0 0 var(--space-m);
+    padding: 0.4rem var(--space-m);
+    font-family: var(--mono);
+    font-size: var(--step--1);
+    letter-spacing: 0.04em;
+    color: var(--ink-dim);
+    border: 1px solid var(--leader);
+  }
   .install {
     display: inline-flex;
     /*
@@ -49,30 +88,36 @@ const repoUrl = `https://github.com/${repo}`
     gap: var(--space-s);
     flex-wrap: wrap;
     padding: var(--space-m);
-    background: var(--bg-raised);
-    border: 1px solid var(--pane-border);
+    background: var(--term);
+    border: 1px solid var(--term-line);
     text-align: left;
   }
   .install pre {
     margin: 0;
     font-family: var(--mono);
     font-size: var(--step--1);
+    color: var(--amber);
     overflow-x: auto;
   }
+  /* Clay button, ink label — the install repeat, styled identically to
+     Hero.astro's own `.install button` (see that file's comment). */
   .install button {
     flex: none;
     font-family: var(--mono);
     font-size: var(--step--1);
-    color: var(--cyan);
-    background: none;
-    border: 1px solid var(--pane-border);
+    color: var(--ink);
+    background: var(--clay);
+    border: none;
     padding: 0.25rem var(--space-s);
     cursor: pointer;
+    transition: opacity 0.2s;
   }
-  .install button:hover,
+  .install button:hover {
+    opacity: 0.85;
+  }
   .install button:focus-visible {
-    border-color: var(--cyan);
-    outline: none;
+    outline: 2px solid var(--amber);
+    outline-offset: 2px;
   }
   /*
    * Paint-stable copy button — same mechanism/rationale as Hero.astro's own
@@ -87,10 +132,13 @@ const repoUrl = `https://github.com/${repo}`
     margin-top: var(--space-m);
     font-family: var(--mono);
     font-size: var(--step--1);
-    color: var(--fg-dim);
+    color: var(--ink-dim);
   }
-  .meta a { color: var(--fg-dim); }
-  .meta a:hover { color: var(--cyan); }
+  /* Both links — release tag and GitHub repo — read clay-ink, matching
+     Hero.astro's identical release link (design spec: "GitHub link
+     clay-ink"). */
+  .meta a { color: var(--clay-ink); }
+  .meta a:hover { color: var(--ink); }
 
   /*
    * ── Enhanced mode: one-time reveal ─────────────────────────────────

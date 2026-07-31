@@ -20,21 +20,28 @@
   }
   /*
    * The rail sits directly on the paper page, not inside an instrument —
-   * ticks are ink chrome, not phosphor. `--cyan` (this task's carried
-   * finding from Task 1's review) aliased to `--green`, which measures
-   * 1.45:1 against paper — functionally invisible; `--leader`/`--clay`/
-   * `--ink` are the paper-world tokens that actually clear contrast here.
+   * ticks are ink chrome, not phosphor. `--cyan` (a Task-1-review carried
+   * finding) aliased to `--green`, which measures 1.45:1 against paper —
+   * functionally invisible.
+   *
+   * Task 3 carried ruling: an earlier pass here used `--leader`/`--clay`
+   * for the two tick states, but those are large-graphic tokens (3:1
+   * floor) and a 7px tick is non-text UI, not large text/graphics — it
+   * still has to clear WCAG 1.4.11's 3:1 non-text floor, which `--leader`
+   * (2.1:1 on paper) and `--clay` (2.79:1 on paper) both fail. `--ink-dim`
+   * (4.8:1) and `--clay-ink` (5.1:1) are the paper-world tokens that
+   * actually clear it.
    */
   .rail a {
     display: block;
     width: 7px;
     height: 7px;
     border-radius: 1px;
-    background: var(--leader);
+    background: var(--ink-dim);
     transition: background 0.25s, transform 0.25s;
   }
   .rail a.on {
-    background: var(--clay);
+    background: var(--clay-ink);
     transform: scale(1.35);
   }
   .rail a:focus-visible {

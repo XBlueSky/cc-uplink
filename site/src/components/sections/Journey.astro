@@ -1,5 +1,6 @@
 ---
 import Pane from '../Pane.astro'
+import FigHeader from '../FigHeader.astro'
 
 // Every line below is a JS string constant reused for BOTH a span's
 // `data-text` attribute and its rendered children, so Astro's own HTML
@@ -44,6 +45,7 @@ const REPLY_CMD = "$ tmux send-keys -t %1 -l '[reply id:6b3b20e6] LGTM — one n
     cause" — lands back in your own pane, correlation id matching the one
     you sent.
   </p>
+  <div class="fig-wrap"><FigHeader n={2} title="SIGNAL JOURNEY" /></div>
   <div class="track" data-track>
     <div class="stage" data-stage>
       <div class="stage-inner">
@@ -68,7 +70,34 @@ const REPLY_CMD = "$ tmux send-keys -t %1 -l '[reply id:6b3b20e6] LGTM — one n
 <span data-line data-typed data-text={REPLY_CMD}>{REPLY_CMD}</span><span class="caret" data-caret aria-hidden="true">▊</span></pre>
               </Pane>
             </div>
-            <div class="beam" data-beam aria-hidden="true"><span class="packet" data-packet></span></div>
+            <div class="beam" data-beam aria-hidden="true">
+              <!--
+                The signal trace (ref-2-frame-exchange.png's shape, ported to
+                this section's vertically-stacked panes): a stub down from
+                the you-pane's edge, a long horizontal dashed run, a stub
+                down into the peer-pane's edge. `preserveAspectRatio="none"`
+                stretches the run to the `.beam` box's actual width — the
+                same box `initJourney`'s packet math (site/src/scripts/
+                enhance.mjs) reads via `beamEl.clientWidth`, so the run
+                always spans exactly where the packet travels, at any
+                viewport width. `overflow: visible` (below) lets the two
+                arrow tips draw slightly outside the viewBox's own 0..40
+                bounds without being clipped.
+              -->
+              <svg class="trace" viewBox="0 0 400 40" preserveAspectRatio="none" aria-hidden="true">
+                <path class="trace-run" d="M14,0 L14,20 L386,20 L386,40" />
+                <!--
+                  Two arrowheads, one per direction — the sanctioned JS
+                  exception (enhance.mjs) toggles `.return` on this SVG's
+                  `[data-beam]` ancestor exactly when the travelling packet's
+                  text flips from the outbound to the return wire string; the
+                  opacity swap below is pure CSS from that one class.
+                -->
+                <path class="trace-arrow arrow-out" d="M378,34 L386,44 L394,34" />
+                <path class="trace-arrow arrow-back" d="M6,6 L14,-4 L22,6" />
+              </svg>
+              <span class="packet" data-packet></span>
+            </div>
           </div>
         </div>
       </div>
@@ -152,25 +181,45 @@ const REPLY_CMD = "$ tmux send-keys -t %1 -l '[reply id:6b3b20e6] LGTM — one n
    * inside a track sized to `.frame`.
    */
   [data-pane-you], [data-pane-peer] { min-width: 0; }
+  /*
+   * `.fig-wrap` matches `.stage-inner`'s own max-width/padding formula (see
+   * above) so the FIG header's leader rule lines up with the frame below it
+   * rather than sitting flush against the viewport edge.
+   */
+  .fig-wrap {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: var(--space-l) var(--space-m) 0;
+  }
   .beatmark {
     font-family: var(--mono);
     font-size: var(--step--1);
-    color: var(--fg-dim);
+    color: var(--ink-dim);
     margin: 0 0 var(--space-s);
     letter-spacing: 0.08em;
   }
-  .beatmark b { color: var(--cyan); font-weight: 400; }
+  .beatmark b { color: var(--clay-ink); font-weight: 400; }
 
   :global([data-pane-you] pre),
   :global([data-pane-peer] pre) {
     margin: 0;
     overflow-x: auto;
   }
-  .dim { color: var(--fg-dim); }
-  .reply { color: var(--cyan); }
+  /*
+   * `.dim`/`.reply`/`.caret` all render INSIDE a Pane's `<pre>` (an
+   * instrument, warm-black CRT ground) — the paper-world ink-dim/clay-ink
+   * pair used elsewhere on this page would be nearly invisible there.
+   * `#A99364` is Pane.astro's own literal dim-instrument tone (5.64:1 on
+   * --term, see that file's comment); `--green`/`--amber` are the named
+   * instrument-world phosphor tokens, matching the style tile's `.rep`/
+   * `.caret` treatment exactly.
+   */
+  .dim { color: #A99364; }
+  .reply { color: var(--green); }
   .env { color: var(--signal); }
-  /* 55% measured ~3.45:1 against --bg — under the 4.5:1 AA floor for
-     content this meaningful (it's the reply instructions). 67% clears it. */
+  /* 67% of --signal against --term (the peer pane's own ground, not --bg —
+     an instrument-body colour, not paper) clears the 4.5:1 AA floor for
+     content this meaningful (it's the reply instructions). */
   .envtail { color: color-mix(in srgb, var(--signal) 67%, transparent); }
 
   /* Caret hooks for the two scroll-typed lines in this section — inert by
@@ -179,7 +228,7 @@ const REPLY_CMD = "$ tmux send-keys -t %1 -l '[reply id:6b3b20e6] LGTM — one n
      (see the `.enhanced` block below) only once it's driving the typing
      itself. */
   [data-caret] { display: none; }
-  .caret { color: var(--cyan); }
+  .caret { color: var(--amber); }
 
   /* Standard visually-hidden-but-screen-reader-visible clip — present
      unconditionally (see the <p class="sr-only"> above the track). */
@@ -195,16 +244,57 @@ const REPLY_CMD = "$ tmux send-keys -t %1 -l '[reply id:6b3b20e6] LGTM — one n
     border: 0;
   }
 
+  /*
+   * The signal beam is now a schematic trace (ref-2-frame-exchange.png),
+   * not a neon gradient bar — see the SVG markup above. `height: 56px`
+   * (up from the old 2px hairline) gives the SVG's two vertical stubs room
+   * to draw without the arrow tips clipping; `top: calc(50% - 28px)` keeps
+   * the box centred on the same midline the old 2px bar sat on, so this is
+   * a like-for-like swap of what fills the gap between the two panes, not
+   * a repositioning. Width (`left`/`right`) is UNCHANGED — that's the box
+   * `initJourney`'s packet math reads via `clientWidth` (site/src/scripts/
+   * enhance.mjs), and the SVG's `preserveAspectRatio="none"` run stretches
+   * to fill exactly that width, so the packet keeps riding the trace it's
+   * drawn on at any viewport size.
+   */
   .beam {
     display: none;
     position: absolute;
     left: 8%;
     right: 8%;
-    top: 50%;
-    height: 2px;
-    background: linear-gradient(90deg, transparent, var(--signal), transparent);
+    top: calc(50% - 28px);
+    height: 56px;
     pointer-events: none;
   }
+  .trace {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+  }
+  .trace-run {
+    fill: none;
+    stroke: var(--signal);
+    stroke-width: 1.6;
+    stroke-dasharray: 6 4;
+    filter: drop-shadow(0 0 3px var(--signal));
+  }
+  .trace-arrow {
+    fill: none;
+    stroke: var(--signal);
+    stroke-width: 1.6;
+    filter: drop-shadow(0 0 3px var(--signal));
+    transition: opacity 0.2s;
+  }
+  /* Outbound (the markup's default, no JS needed): arrow enters the peer
+     pane at the bottom-right stub. `.return` (toggled by enhance.mjs — see
+     that file's own comment on this exact class) swaps which end lights
+     up, so the reply leg's arrow instead enters the you-pane at the
+     top-left stub — the sanctioned one-class JS hook this task allows. */
+  .arrow-back { opacity: 0; }
+  [data-beam].return .arrow-out { opacity: 0; }
+  [data-beam].return .arrow-back { opacity: 1; }
   .packet {
     position: absolute;
     top: 50%;
@@ -213,10 +303,11 @@ const REPLY_CMD = "$ tmux send-keys -t %1 -l '[reply id:6b3b20e6] LGTM — one n
     font-family: var(--mono);
     font-size: var(--step--1);
     color: var(--signal);
-    background: color-mix(in srgb, var(--bg) 92%, transparent);
+    background: var(--term);
     border: 1px solid color-mix(in srgb, var(--signal) 55%, transparent);
     border-radius: 3px;
     padding: 3px 9px;
+    box-shadow: 0 0 12px color-mix(in srgb, var(--signal) 25%, transparent);
   }
 
   .copy {
@@ -225,8 +316,19 @@ const REPLY_CMD = "$ tmux send-keys -t %1 -l '[reply id:6b3b20e6] LGTM — one n
     padding: var(--space-l) var(--space-m) var(--space-s);
   }
   .copy h2 { font-size: var(--step-2); line-height: 1.2; margin: 0 0 var(--space-m); }
-  .copy p { color: var(--fg-dim); }
-  .copy .k { font-family: var(--mono); font-size: 0.92em; color: var(--fg); }
+  .copy p { color: var(--ink-dim); }
+  /* Manilla inline-code chip — matches Doc.astro's `:not(pre) > code`
+     treatment exactly (design spec's Tokens section: "--manilla ...
+     inline-code fill, tags"), so prose code styling reads the same whether
+     it's markdown-rendered docs or hand-authored landing copy. */
+  .copy .k {
+    font-family: var(--mono);
+    font-size: 0.92em;
+    color: var(--ink);
+    background: var(--manilla);
+    padding: 0.1em 0.35em;
+    border-radius: 3px;
+  }
 
   /*
    * ── Enhanced mode: the pinned scroll scrub ─────────────────────────

@@ -1,5 +1,6 @@
 ---
 import Pane from '../Pane.astro'
+import FigHeader from '../FigHeader.astro'
 
 const { tagline, intro, release, repo, pluginName, marketplaceName } = Astro.props
 // `plugin@marketplace`'s second half names the marketplace entry, which is
@@ -11,6 +12,7 @@ const { tagline, intro, release, repo, pluginName, marketplaceName } = Astro.pro
 const marketplaceSlug = marketplaceName ?? pluginName
 ---
 <section class="hero" id="hero" aria-labelledby="hero-heading">
+  <FigHeader n={1} title="HERO" />
   <div class="wrap">
     <div class="copy">
       <h1 id="hero-heading">{tagline}</h1>
@@ -24,10 +26,22 @@ const marketplaceSlug = marketplaceName ?? pluginName
         <a href={release.url}>{release.tag}</a> · one static Rust binary · MIT
       </p>
     </div>
-    <Pane title="tmux:%1 — claude" active={true}>
-      <pre>$ claude
+    <div class="pane-wrap">
+      <Pane title="tmux:%1 — claude" active={true}>
+        <pre>$ claude
 <span data-hero-line></span><span class="caret" aria-hidden="true"></span></pre>
-    </Pane>
+      </Pane>
+      <!--
+        ref-1-style dashed-leader callout — the ONE annotation the design
+        spec calls for on this section, carrying real information (it's the
+        product's actual claim, not decoration). aria-hidden: the same fact
+        is already in `intro` above, which a screen reader visitor gets as
+        plain prose; hidden below 760px, same breakpoint style-tile's own
+        `.callout` uses, because a stacked single-column layout there leaves
+        no safe margin to float it in without overlapping real content.
+      -->
+      <p class="callout" aria-hidden="true">fig. 1a — the peer installs nothing</p>
+    </div>
   </div>
   <p class="cue" aria-hidden="true">▼ scroll</p>
 </section>
@@ -58,8 +72,29 @@ const marketplaceSlug = marketplaceName ?? pluginName
    * automatic-minimum-size contribution, not its ancestor `.copy`'s.
    */
   .copy { min-width: 0; }
-  h1 { font-size: var(--step-3); line-height: 1.05; margin: 0 0 var(--space-m); letter-spacing: -0.02em; }
-  .sub { color: var(--fg-dim); max-width: 46ch; font-size: var(--step-1); line-height: 1.5; }
+  /*
+   * Instrument Serif at its only available weight (400) reads visibly
+   * lighter than the bold sans this replaced — browser-checked at 1440 and
+   * 390: --step-3 alone (the token as shipped by Task 1) looked thin next
+   * to the sub/install block at both widths, so this bumps it ~12% via a
+   * local calc() rather than editing tokens.css's shared step scale (out of
+   * this task's file scope, and step-3 is already the top of that scale —
+   * there's no "next step" to move to). Kept as a Hero-local override, not
+   * a new token, since nothing else needs this exact bump.
+   */
+  h1 {
+    font-size: calc(var(--step-3) * 1.12);
+    line-height: 1.05;
+    margin: 0 0 var(--space-m);
+    letter-spacing: -0.01em;
+  }
+  .sub { color: var(--ink-dim); max-width: 46ch; font-size: var(--step-1); line-height: 1.5; }
+  /*
+   * The install block is a dark instrument strip embedded in the paper page
+   * (design spec §2/Hero: "term bg, amber code text") — same ground/border
+   * recipe as a Pane, but flat chrome rather than a full CRT (no
+   * scanlines/glow of its own).
+   */
   .install {
     margin-top: var(--space-l);
     display: flex;
@@ -67,29 +102,36 @@ const marketplaceSlug = marketplaceName ?? pluginName
     gap: var(--space-s);
     flex-wrap: wrap;
     padding: var(--space-m);
-    background: var(--bg-raised);
-    border: 1px solid var(--pane-border);
+    background: var(--term);
+    border: 1px solid var(--term-line);
   }
   .install pre {
     margin: 0;
     font-family: var(--mono);
     font-size: var(--step--1);
+    color: var(--amber);
     overflow-x: auto;
   }
+  /* Clay button, ink label — the paper accent colour used as a solid-fill
+     control against the dark install strip, same clay/ink pairing as the
+     schematic's own accent usage elsewhere on this page. */
   .install button {
     flex: none;
     font-family: var(--mono);
     font-size: var(--step--1);
-    color: var(--cyan);
-    background: none;
-    border: 1px solid var(--pane-border);
+    color: var(--ink);
+    background: var(--clay);
+    border: none;
     padding: 0.25rem var(--space-s);
     cursor: pointer;
+    transition: opacity 0.2s;
   }
-  .install button:hover,
+  .install button:hover {
+    opacity: 0.85;
+  }
   .install button:focus-visible {
-    border-color: var(--cyan);
-    outline: none;
+    outline: 2px solid var(--amber);
+    outline-offset: 2px;
   }
   /*
    * Paint-stable copy button: hidden by CSS, not the `hidden` HTML
@@ -110,23 +152,54 @@ const marketplaceSlug = marketplaceName ?? pluginName
     margin-top: var(--space-s);
     font-family: var(--mono);
     font-size: var(--step--1);
-    color: var(--fg-dim);
+    color: var(--ink-dim);
   }
+  .meta a { color: var(--clay-ink); }
+  .meta a:hover { color: var(--ink); }
+  .pane-wrap { position: relative; }
   .caret {
     display: inline-block;
     width: 0.55em;
     height: 1.15em;
-    background: var(--cyan);
+    background: var(--amber);
+    box-shadow: 0 0 8px rgba(255, 156, 27, .8);
     vertical-align: text-bottom;
     animation: blink 1.1s step-end infinite;
   }
   @keyframes blink { 50% { opacity: 0; } }
+  /*
+   * Dashed-leader callout, ref-1's own annotation shape: a short dashed
+   * stub leading into a mono label, floated over the pane's top-right
+   * corner. `right`/`top` are tuned so it clears the pane header at both
+   * grid breakpoints without needing separate positioning per breakpoint —
+   * verified in browser at 900/1200/1440.
+   */
+  .callout {
+    position: absolute;
+    right: 4px;
+    top: -30px;
+    margin: 0;
+    padding-left: 34px;
+    font-family: var(--mono);
+    font-size: var(--step--1);
+    color: var(--clay-ink);
+    white-space: nowrap;
+  }
+  .callout::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 50%;
+    width: 28px;
+    height: 1px;
+    background: repeating-linear-gradient(90deg, var(--leader) 0 4px, transparent 4px 7px);
+  }
   .cue {
     text-align: center;
     margin: var(--space-xl) 0 0;
     font-family: var(--mono);
     font-size: var(--step--1);
-    color: var(--fg-dim);
+    color: var(--ink-dim);
     animation: bob 2.2s ease-in-out infinite;
   }
   @keyframes bob { 50% { transform: translateY(7px); } }
@@ -138,5 +211,6 @@ const marketplaceSlug = marketplaceName ?? pluginName
 
   @media (max-width: 760px) {
     .wrap { grid-template-columns: 1fr; gap: var(--space-l); }
+    .callout { display: none; }
   }
 </style>

@@ -1,16 +1,110 @@
 ---
+import FigHeader from '../FigHeader.astro'
+
 const { tools } = Astro.props
 
 const drivers = ['tmux', 'image:openai', 'image:codex', '…the next one']
+
+// ── Architecture mini-schematic geometry ─────────────────────────────────
+// Six tool boxes on a fixed row, a dashed bus, four driver boxes plugged in
+// underneath — computed here rather than hand-placed so the layout can't
+// drift out of sync with `tools`/`drivers` above. viewBox is authored close
+// to the diagram's narrowest real container (a 390px viewport, minus this
+// section's own padding) so labels stay legible there without the SVG ever
+// growing large enough on wide screens to look like a poster (the CSS caps
+// its rendered width — see the <style> block below).
+const VB_W = 440
+const VB_H = 190
+const BUS_Y = 96
+
+/**
+ * Evenly spaces `n` boxes of width `boxW` across `0..VB_W`, with `n + 1`
+ * equal gaps (margins included) — the same "distribute the remainder"
+ * layout `.chips`'s own flexbox does automatically, just computed in the
+ * frontmatter since these coordinates have to be static SVG attributes.
+ */
+function layoutRow(n, boxW) {
+  const gap = (VB_W - n * boxW) / (n + 1)
+  return Array.from({ length: n }, (_, i) => gap + i * (boxW + gap))
+}
+
+const TOOL_BOX_W = 66
+const TOOL_BOX_H = 32
+const TOOL_Y = 16
+const toolXs = layoutRow(tools.length, TOOL_BOX_W)
+// Box labels drop the shared "channel_" prefix (every one of the six tools
+// carries it) so the short suffix fits a box this size at a legible font —
+// the full name is never lost, it's one line down in the accessible
+// `<ul class="chips">` list this diagram sits above.
+const toolBoxes = tools.map((tool, i) => ({
+  label: tool.replace(/^channel_/, '').toUpperCase(),
+  x: toolXs[i],
+}))
+
+const DRIVER_BOX_W = 88
+const DRIVER_BOX_H = 30
+const DRIVER_Y = 142
+const driverXs = layoutRow(drivers.length, DRIVER_BOX_W)
+const driverBoxes = drivers.map((driver, i) => ({
+  label: driver.replace(/^image:/, '').replace('…the next one', '+ next').toUpperCase(),
+  x: driverXs[i],
+}))
 ---
 <section class="tools-sec" id="tools" aria-labelledby="tools-heading">
   <div>
+    <FigHeader n={4} title="TOOLS" />
     <div class="intro" data-reveal>
       <h2 id="tools-heading">Adding a driver adds zero tools</h2>
       <p class="body">
         Drivers plug in underneath a fixed surface. However many ways Claude
         can reach the outside world, the tool listing stays exactly this long.
       </p>
+    </div>
+    <div class="schematic" data-reveal>
+      <svg
+        viewBox={`0 0 ${VB_W} ${VB_H}`}
+        preserveAspectRatio="xMidYMid meet"
+        role="img"
+        aria-label="Six fixed MCP tools on a stable surface; drivers plug in underneath without adding tools"
+      >
+        {toolBoxes.map((box) => (
+          <Fragment>
+            <line
+              class="stub"
+              x1={box.x + TOOL_BOX_W / 2} y1={TOOL_Y + TOOL_BOX_H}
+              x2={box.x + TOOL_BOX_W / 2} y2={BUS_Y}
+              vector-effect="non-scaling-stroke"
+            />
+            <rect
+              class="tool-box"
+              x={box.x} y={TOOL_Y} width={TOOL_BOX_W} height={TOOL_BOX_H}
+              vector-effect="non-scaling-stroke"
+            />
+            <text class="tool-label" x={box.x + TOOL_BOX_W / 2} y={TOOL_Y + TOOL_BOX_H / 2 + 4} text-anchor="middle">
+              {box.label}
+            </text>
+          </Fragment>
+        ))}
+        <line class="bus" x1="6" y1={BUS_Y} x2={VB_W - 6} y2={BUS_Y} vector-effect="non-scaling-stroke" />
+        {driverBoxes.map((box) => (
+          <Fragment>
+            <line
+              class="stub"
+              x1={box.x + DRIVER_BOX_W / 2} y1={BUS_Y}
+              x2={box.x + DRIVER_BOX_W / 2} y2={DRIVER_Y}
+              vector-effect="non-scaling-stroke"
+            />
+            <rect
+              class="driver-box"
+              x={box.x} y={DRIVER_Y} width={DRIVER_BOX_W} height={DRIVER_BOX_H}
+              vector-effect="non-scaling-stroke"
+            />
+            <text class="driver-label" x={box.x + DRIVER_BOX_W / 2} y={DRIVER_Y + DRIVER_BOX_H / 2 + 4} text-anchor="middle">
+              {box.label}
+            </text>
+          </Fragment>
+        ))}
+      </svg>
     </div>
     <ul class="chips" aria-label="The six fixed tools">
       {tools.map((tool) => <li class="chip" data-reveal>{tool}</li>)}
@@ -30,7 +124,49 @@ const drivers = ['tmux', 'image:openai', 'image:codex', '…the next one']
     text-align: center;
   }
   h2 { font-size: var(--step-2); line-height: 1.1; margin: 0 0 var(--space-m); }
-  .body { color: var(--fg-dim); max-width: 52ch; margin: 0 auto var(--space-l); }
+  .body { color: var(--ink-dim); max-width: 52ch; margin: 0 auto var(--space-l); }
+
+  /*
+   * The architecture mini-schematic (design spec §4/ToolsGrid, ref-1's own
+   * fig-2 framing): ink strokes for the boxes/bus stubs, clay-ink labels,
+   * a dashed leader-toned bus spine. Capped at a moderate max-width so it
+   * reads as a compact instrument diagram rather than a full-bleed poster
+   * on wide screens; `vector-effect="non-scaling-stroke"` (set per-shape
+   * above) keeps every stroke a constant on-screen weight regardless of
+   * how much the viewBox scales up or down to fill that width.
+   */
+  .schematic {
+    max-width: 460px;
+    margin: var(--space-l) auto 0;
+  }
+  .schematic svg {
+    display: block;
+    width: 100%;
+    height: auto;
+  }
+  .tool-box, .driver-box {
+    fill: rgba(255, 255, 255, .5);
+    stroke: var(--ink);
+    stroke-width: 1.25;
+  }
+  .driver-box {
+    stroke-dasharray: 4 3;
+  }
+  .stub {
+    stroke: var(--ink);
+    stroke-width: 1.1;
+  }
+  .bus {
+    stroke: var(--leader);
+    stroke-width: 1.6;
+    stroke-dasharray: 5 4;
+  }
+  .tool-label, .driver-label {
+    font-family: var(--mono);
+    font-size: 12px;
+    fill: var(--clay-ink);
+  }
+
   .chips {
     display: flex;
     flex-wrap: wrap;
@@ -40,23 +176,28 @@ const drivers = ['tmux', 'image:openai', 'image:codex', '…the next one']
     padding: 0;
     list-style: none;
   }
+  /*
+   * Ink-bordered paper components (design spec §4): a leader border and a
+   * faint white-ish fill on the paper-grid ground, ink mono text — driver
+   * chips (below) stay dashed to read as "plugged in", not fixed.
+   */
   .chip {
     font-family: var(--mono);
     font-size: var(--step--1);
     padding: 0.5rem var(--space-s);
-    border: 1px solid var(--pane-border);
-    background: color-mix(in srgb, var(--bg-raised) 80%, transparent);
-    color: var(--fg);
+    border: 1px solid var(--leader);
+    background: rgba(255, 255, 255, .5);
+    color: var(--ink);
   }
   .chip.drv {
-    border-style: dotted;
-    color: var(--fg-dim);
+    border-style: dashed;
+    color: var(--ink-dim);
     background: none;
   }
   .surface-note {
     font-family: var(--mono);
     font-size: var(--step--1);
-    color: var(--fg-dim);
+    color: var(--ink-dim);
     margin: var(--space-m) 0;
   }
 

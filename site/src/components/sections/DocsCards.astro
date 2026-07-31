@@ -1,4 +1,6 @@
 ---
+import FigHeader from '../FigHeader.astro'
+
 // One factual, English sentence per doc page — written fresh for this
 // redesign (the storyboard's own hooks are Traditional Chinese and are
 // explicitly storyboard-only teaching aids, not shippable copy).
@@ -32,6 +34,7 @@ const cards = [
 ---
 <section class="docs-sec" id="docs" aria-labelledby="docs-heading">
   <div>
+    <FigHeader n={5} title="DOCS" />
     <div class="intro" data-reveal>
       <h2 id="docs-heading">Read the contracts</h2>
       <p class="body">The parts most tools hide are the parts this one documents.</p>
@@ -55,7 +58,7 @@ const cards = [
     text-align: center;
   }
   h2 { font-size: var(--step-2); line-height: 1.1; margin: 0 0 var(--space-m); }
-  .body { color: var(--fg-dim); max-width: 52ch; margin: 0 auto; }
+  .body { color: var(--ink-dim); max-width: 52ch; margin: 0 auto; }
   .cards {
     margin-top: var(--space-l);
     display: grid;
@@ -63,31 +66,40 @@ const cards = [
     gap: var(--space-s);
     text-align: left;
   }
+  /*
+   * Paper cards (design spec §5/DocsCards): leader-bordered, a faint
+   * white-ish fill on the paper-grid ground — same fill recipe as
+   * ToolsGrid.astro's own `.chip`, so the two "component" surfaces on this
+   * page read as one family. Hover swaps to a clay border + a soft
+   * clay-tinted shadow, the paper world's equivalent of Pane.astro's own
+   * active-state amber glow.
+   */
   .card {
     display: block;
-    border: 1px solid var(--pane-border);
+    border: 1px solid var(--leader);
     padding: var(--space-m);
-    background: color-mix(in srgb, var(--bg-raised) 70%, transparent);
+    background: rgba(255, 255, 255, .5);
     text-decoration: none;
-    transition: border-color 0.25s;
+    transition: border-color 0.25s, box-shadow 0.25s;
   }
   .card:hover,
   .card:focus-visible {
-    border-color: var(--cyan);
+    border-color: var(--clay);
+    box-shadow: 0 2px 12px color-mix(in srgb, var(--clay) 18%, transparent);
     outline: none;
   }
   .card b {
     display: block;
     font-family: var(--mono);
     font-size: var(--step--1);
-    color: var(--fg);
+    color: var(--clay-ink);
     font-weight: 500;
   }
   .card span {
     display: block;
     margin-top: var(--space-s);
     font-size: var(--step--1);
-    color: var(--fg-dim);
+    color: var(--ink-dim);
     line-height: 1.5;
   }
 

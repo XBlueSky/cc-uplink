@@ -1,5 +1,5 @@
 import { clamp01 } from '../lib/scrub.mjs'
-import { journeyState } from '../lib/journeyState.mjs'
+import { journeyState, RETURN_PACKET_TEXT } from '../lib/journeyState.mjs'
 import { demoState, demoProgress } from '../lib/demoState.mjs'
 import { initAmbience } from './ambience.mjs'
 
@@ -287,6 +287,11 @@ function initJourney() {
       if (last.packetText !== state.packet.text) {
         last.packetText = state.packet.text
         packetEl.textContent = state.packet.text
+        // Sanctioned §3 hook (design spec, Task 3): flips the trace SVG's
+        // arrowhead via CSS alone — [data-beam] carries `.return` on the
+        // reply leg, cleared on the outbound leg. See Journey.astro's
+        // `.arrow-out`/`.arrow-back` rules for the CSS half of this.
+        beamEl.classList.toggle('return', state.packet.text === RETURN_PACKET_TEXT)
       }
       const left = state.packet.t * (beamEl.clientWidth - packetEl.clientWidth)
       if (last.packetLeft !== left) {
