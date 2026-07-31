@@ -47,6 +47,15 @@
   --step-1: clamp(1.35rem, 1.2rem + 0.7vw, 1.8rem);
   --step-2: clamp(1.9rem, 1.5rem + 1.8vw, 3rem);
   --step-3: clamp(2.6rem, 1.8rem + 3.6vw, 5rem);
+  /*
+   * Instrument Serif at its only available weight (400) reads visibly
+   * lighter than the bold sans it replaced — browser-checked at 1440 and
+   * 390: --step-3 alone looked thin next to Hero's sub/install block at
+   * both widths, so this bumps it ~12%. Hero.astro is the only consumer;
+   * promoted to a token (rather than a Hero-local calc()) so the exact
+   * multiplier lives in one place alongside the rest of the type scale.
+   */
+  --h1-size: calc(var(--step-3) * 1.12);
 
   --space-s: 0.75rem;
   --space-m: 1.5rem;
@@ -72,22 +81,16 @@
    *   --fg-dim      -> ink-dim (ditto, secondary/meta text)
    *   --accent      -> amber (active-state highlight; instruments get
    *                    light, not clay — see Role rule above)
-   *   --accent-dim  -> amber (Ambience's low-opacity wash; its
-   *                    color-mix() call sites already dim it further)
+   *   --accent-dim  -> amber (its color-mix() call sites already dim it
+   *                    further)
    *   --pane-border -> term-line
-   *   --cyan        -> green, a *compatibility alias only* for this
-   *                    task (spec: "Cyan retires entirely"). Task 2/3
-   *                    replace each --cyan call site with its real
-   *                    per-component colour (e.g. clay-ink on 404,
-   *                    amber on StatusLine, since StatusLine is an
-   *                    instrument) and Task 4 deletes this alias.
    *
    * Caveat: some of these callers sit directly on the page (now paper)
-   * rather than inside a still-dark pane, so --fg/--fg-dim/--cyan text
-   * there will read low-contrast until Task 2/3 gives that component
-   * its own paper or instrument treatment. That is the expected
-   * half-skinned mid-state, not a regression introduced here — fixing
-   * it means editing component files outside this task's scope.
+   * rather than inside a still-dark pane, so --fg/--fg-dim text there will
+   * read low-contrast until Task 2/3 gives that component its own paper or
+   * instrument treatment. That is the expected half-skinned mid-state, not
+   * a regression introduced here — fixing it means editing component files
+   * outside this task's scope.
    */
   --bg: var(--paper);
   --bg-raised: var(--term);
@@ -96,7 +99,6 @@
   --accent: var(--amber);
   --accent-dim: var(--amber);
   --pane-border: var(--term-line);
-  --cyan: var(--green);
 
   /*
    * Shiki (astro.config.mjs's `markdown.shikiConfig.theme: 'css-variables'`)
@@ -113,8 +115,9 @@
    * against --term in site/test/palette-contrast.test.mjs (amber, green,
    * and #F2E7CF are asserted there by name; leader was checked by hand
    * at 5.83:1 — see task-1-report.md) — bypassing the transitional
-   * --accent/--cyan aliases above so Task 4 deleting --cyan can't
-   * silently break code-block colours.
+   * --accent alias above (and the compatibility link-colour alias Task 4
+   * already deleted) so that alias cleanup couldn't silently break
+   * code-block colours.
    */
   --astro-code-foreground: #F2E7CF;
   --astro-code-background: var(--term);
@@ -156,9 +159,9 @@ body {
 
 code, pre, .mono { font-family: var(--mono); }
 
-a { color: var(--cyan); }
+a { color: var(--green); }
 
 :focus-visible {
-  outline: 2px solid var(--cyan);
+  outline: 2px solid var(--green);
   outline-offset: 2px;
 }

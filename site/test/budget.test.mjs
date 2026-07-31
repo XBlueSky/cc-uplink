@@ -22,7 +22,7 @@ test('landing ships the enhancement script bundle', (t) => {
   const files = jsFiles(join(DIST, '_astro'))
   assert.ok(
     files.length > 0,
-    'the landing shipped no JS bundle — did the ambience bootstrap script get dropped?',
+    'the landing shipped no JS bundle — did the enhancement script get dropped?',
   )
 
   const html = readFileSync(join(DIST, 'index.html'), 'utf8')
@@ -82,14 +82,10 @@ test('landing JavaScript stays under 20 kB gzipped', (t) => {
   // whatever mix of inline/external Astro happens to choose for either of
   // them on a given build. Each must actually weigh something; a 0-byte
   // entry would mean the accounting above broke, not that the script is
-  // free. Was ">= 3" (gate + a standalone ambience bootstrap + enhance)
-  // before ambience's bootstrap moved into enhance.mjs itself (see that
-  // file's `initPageAmbience`) — index.astro dropped to exactly these two
-  // script tags, so the floor drops to match, not because the accounting
-  // got looser.
+  // free.
   assert.ok(
     scripts.length >= 2,
-    `expected at least 2 <script> contributions (gate + enhance, which now also bootstraps ambience), found ${scripts.length}: ${scripts.map((s) => s.kind).join(', ')}`,
+    `expected at least 2 <script> contributions (gate + enhance), found ${scripts.length}: ${scripts.map((s) => s.kind).join(', ')}`,
   )
   for (const s of scripts) {
     assert.ok(s.bytes > 0, `script "${s.kind}" contributed 0 gzip bytes`)
@@ -126,12 +122,4 @@ test('docs pages reference no script bundle', (t) => {
   const html = readFileSync(page, 'utf8')
   assert.ok(!/<script(?![^>]*type="application\/ld\+json")/.test(html),
     'a docs page shipped a script tag')
-})
-
-test('no ambience reference PNG was copied into the build', (t) => {
-  if (!existsSync(DIST)) return t.skip('run `npm run build` first')
-
-  const leaked = readdirSync(DIST, { recursive: true })
-    .filter((name) => String(name).includes('ambience-'))
-  assert.deepEqual(leaked, [], `art-direction references shipped: ${leaked.join(', ')}`)
 })

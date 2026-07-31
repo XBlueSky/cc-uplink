@@ -26,18 +26,18 @@ const { title, slug } = Astro.props
     color: var(--ink-dim);
     text-decoration: none;
   }
-  /* Carried Task-1-review finding: was --cyan, which aliases to --green —
-     1.45:1 on paper, functionally invisible. --clay-ink is the paper-world
-     link tone (5.1:1 on paper; see tokens.css's Role rule). */
+  /* Carried Task-1-review finding: was the old link-accent alias (aliased
+     to --green — 1.45:1 on paper, functionally invisible). --clay-ink is
+     the paper-world link tone (5.1:1 on paper; see tokens.css's Role rule). */
   .back:hover { color: var(--clay-ink); }
   .doc :global(h1) { font-size: var(--step-2); line-height: 1.15; margin-bottom: var(--space-m); }
   .doc :global(h2) { font-size: var(--step-1); margin-top: var(--space-l); }
   /*
    * Prose links (rendered from markdown, e.g. security.md's SECURITY.md
    * link) — scoped here rather than left to tokens.css's global `a` rule,
-   * which still points at the retiring --cyan alias until Task 4 deletes
-   * it. `:not(.back)` keeps this from re-painting the back-link above,
-   * which is also an <a> inside .doc and already has its own colour.
+   * which points straight at --green (paper-unaware, low-contrast here).
+   * `:not(.back)` keeps this from re-painting the back-link above, which
+   * is also an <a> inside .doc and already has its own colour.
    */
   .doc :global(a:not(.back)) { color: var(--clay-ink); }
   .doc :global(pre) {

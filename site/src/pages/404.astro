@@ -50,10 +50,11 @@ import Pane from '../components/Pane.astro'
    * Everything below is slotted INTO the Pane (its default slot renders
    * inside .pane-body, an instrument surface) — amber is light in
    * instruments, never clay (tokens.css's Role rule). This is this task's
-   * carried Task-1-review finding: these were --cyan, which retires
-   * entirely per the design spec. #A99364 is the same literal dim-instrument
-   * tone Pane.astro/StatusLine.astro use for their own chrome text (not a
-   * named token — see those files' comments for why).
+   * carried Task-1-review finding: these were the old link-accent alias,
+   * which retired entirely per the design spec. #A99364 is the same
+   * literal dim-instrument tone Pane.astro/StatusLine.astro use for their
+   * own chrome text (not a named token — see those files' comments for
+   * why).
    */
   .err { color: var(--amber); }
   .dim { color: #A99364; }

@@ -6,14 +6,14 @@ import { readFileSync } from 'node:fs'
  * WCAG 2.1 relative luminance / contrast ratio math
  * (https://www.w3.org/TR/WCAG21/#dfn-relative-luminance), copied inline
  * from the now-deleted src/lib/contrast.mjs rather than imported — that
- * file existed only to serve the retired ambience shader's LUM_CEILING
- * machinery (see contrast-ceiling.test.mjs, which keeps its own inlined
- * copy for the same reason) and is deleted along with it in this task.
- * The 0.04045 sRGB-to-linear threshold below is the constant contrast.mjs
- * used; keep it, not the 0.03928 variant the old Shiki-only
- * contrast.test.mjs used locally — both give the same result for every
- * pair this file checks, but 0.04045 is the one the spec calls "known
- * good".
+ * file existed only to serve the page shader's dark-background luminance
+ * ceiling (see contrast-ceiling.test.mjs, which keeps its own inlined copy
+ * for the same reason), and both the shader and the shared lib it depended
+ * on were retired in this task. The 0.04045 sRGB-to-linear threshold below
+ * is the constant contrast.mjs used; keep it, not the 0.03928 variant the
+ * old Shiki-only contrast.test.mjs used locally — both give the same
+ * result for every pair this file checks, but 0.04045 is the one the spec
+ * calls "known good".
  */
 function srgbToLinear(channel) {
   const s = channel / 255

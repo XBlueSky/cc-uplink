@@ -75,15 +75,13 @@ const marketplaceSlug = marketplaceName ?? pluginName
   /*
    * Instrument Serif at its only available weight (400) reads visibly
    * lighter than the bold sans this replaced — browser-checked at 1440 and
-   * 390: --step-3 alone (the token as shipped by Task 1) looked thin next
-   * to the sub/install block at both widths, so this bumps it ~12% via a
-   * local calc() rather than editing tokens.css's shared step scale (out of
-   * this task's file scope, and step-3 is already the top of that scale —
-   * there's no "next step" to move to). Kept as a Hero-local override, not
-   * a new token, since nothing else needs this exact bump.
+   * 390: --step-3 alone looked thin next to the sub/install block at both
+   * widths, so tokens.css's --h1-size bumps it ~12% over --step-3 (that
+   * token's own comment has the full rationale). This is its only
+   * consumer.
    */
   h1 {
-    font-size: calc(var(--step-3) * 1.12);
+    font-size: var(--h1-size);
     line-height: 1.05;
     margin: 0 0 var(--space-m);
     letter-spacing: -0.01em;

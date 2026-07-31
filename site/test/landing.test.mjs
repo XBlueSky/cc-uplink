@@ -378,9 +378,3 @@ test('landing renders the manifest tagline and all six tools', (t) => {
     assert.ok(text.includes(tool), `tool ${tool} missing from landing`)
   }
 })
-
-test('landing ships no ambience raster image', (t) => {
-  if (!existsSync(INDEX)) return t.skip('run `npm run build` first')
-  const html = readFileSync(INDEX, 'utf8')
-  assert.ok(!html.includes('ambience-'), 'an ambience reference PNG was shipped')
-})
