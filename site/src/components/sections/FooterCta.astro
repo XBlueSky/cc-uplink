@@ -11,7 +11,7 @@ const repoUrl = `https://github.com/${repo}`
     <div class="install">
       <pre><code>/plugin marketplace add {repo}
 /plugin install {pluginName}@{marketplaceSlug}</code></pre>
-      <button type="button" data-copy hidden>copy</button>
+      <button type="button" data-copy>copy</button>
     </div>
     <!-- source-line wrapping is deliberate: a newline adjacent to a tag
          edge collapses to zero-width, not a space, so this stays on one
@@ -74,6 +74,15 @@ const repoUrl = `https://github.com/${repo}`
     border-color: var(--cyan);
     outline: none;
   }
+  /*
+   * Paint-stable copy button — same mechanism/rationale as Hero.astro's own
+   * `[data-copy]` rule (see that file's comment): hidden by CSS keyed off
+   * `has-clipboard` (stamped on `<html>` pre-paint, alongside `enhanced`, by
+   * index.astro's gate script), not the `hidden` HTML attribute + a later
+   * JS un-hide, so the module wiring the click handler causes zero shift.
+   */
+  [data-copy] { display: none; }
+  :global(.has-clipboard) [data-copy] { display: inline-block; }
   .meta {
     margin-top: var(--space-m);
     font-family: var(--mono);

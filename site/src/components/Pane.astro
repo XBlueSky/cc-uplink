@@ -13,22 +13,26 @@ const { title, active = false } = Astro.props
     display: flex;
     flex-direction: column;
     min-width: 0;
+    transition: border-color 0.3s, box-shadow 0.3s;
   }
   /*
-   * `box-shadow` is the storyboard's `.pane.active` glow (`box-shadow: 0 0
-   * 24px rgba(91,124,250,.14)`), ported here — Task 2's own port of this
-   * component picked up the border-color half of that rule but dropped the
-   * glow itself. `rgba(91,124,250,…)` is the storyboard's `--indigo-hi`,
-   * whose hex is byte-identical to this site's `--accent` token (`--accent-
-   * dim`, used above for the border, is the storyboard's plainer `--indigo`
-   * instead) — so the glow deliberately reaches for `--accent`, not
-   * `--accent-dim`, to actually match the brighter blue the storyboard
-   * renders. No motion is involved (a static shadow, not an animation or
-   * transition), so no `prefers-reduced-motion` guard is needed alongside
-   * it, matching border-color just above.
+   * `border-color`/`box-shadow` are the storyboard's `.pane.active` glow
+   * (`border-color: #5b7cfa; box-shadow: 0 0 24px rgba(91,124,250,.14)`),
+   * ported here. `rgba(91,124,250,…)` is the storyboard's `--indigo-hi`,
+   * byte-identical to this site's `--accent` token — both properties
+   * deliberately reach for `--accent` to match the brighter blue the
+   * storyboard renders for its ACTIVE pane. `--accent-dim` (the
+   * storyboard's plainer `--indigo`) is that storyboard's INACTIVE panel
+   * colour, not a faithful active mapping — an earlier port of this
+   * component reached for it here by mistake, on the border-color half
+   * only. `transition` on the base `.pane` rule above animates both
+   * properties whenever `data-active` flips. No `prefers-reduced-motion`
+   * guard is needed alongside it: `data-active` only ever changes in
+   * enhanced mode (see enhance.mjs's initJourney), and reaching enhanced
+   * mode already implies motion is allowed.
    */
   .pane[data-active='true'] {
-    border-color: var(--accent-dim);
+    border-color: var(--accent);
     box-shadow: 0 0 24px color-mix(in srgb, var(--accent) 14%, transparent);
   }
   .pane-title {

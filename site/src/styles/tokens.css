@@ -8,7 +8,9 @@
   --cyan: #58c5d4;
   --pane-border: #1c2130;
 
-  /* The brand's one warm accent — used only for the act 2 signal beam. */
+  /* The brand's one warm accent — used for §2's journey beam/packet and the
+     envelope lines it carries (Journey.astro's `.beam`, `.packet`, `.env`,
+     `.envtail`). */
   --signal: #ff9c1b;
 
   --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace;

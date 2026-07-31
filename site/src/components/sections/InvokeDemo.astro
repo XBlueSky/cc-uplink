@@ -67,9 +67,11 @@ const PATHS = '  ⎿ paths: ["~/project/lighthouse.png"]'
   :global([data-demo] pre) { margin: 0; overflow-x: auto; }
   .dim { color: var(--fg-dim); }
 
-  /* Caret hook for the scroll-typed ask line — inert until a later
-     enhancement layer drives it; the static/flat page already shows the
-     line's full text, so no blinking cursor is needed. */
+  /* Caret hook for the scroll-typed ask line — inert here; enhance.mjs
+     drives it via this same file's own
+     `.enhanced [data-demo].scrubbing [data-caret]` rule below. The
+     static/flat page already shows the line's full text, so no blinking
+     cursor is needed there. */
   [data-caret] { display: none; }
   .caret { color: var(--cyan); }
 
@@ -79,13 +81,6 @@ const PATHS = '  ⎿ paths: ["~/project/lighthouse.png"]'
     width: 100%;
     height: auto;
     border: 1px solid var(--pane-border);
-    /*
-     * Visible by default — this is the no-JS/static state. A later
-     * enhancement layer starts this at opacity 0 and adds `.on` once the
-     * demo pane's typewriter has finished, gated behind whatever class it
-     * introduces (see Journey.astro's `.beam` comment for the same pattern).
-     */
-    opacity: 1;
   }
   .artifact figcaption {
     margin-top: var(--space-s);
@@ -111,9 +106,19 @@ const PATHS = '  ⎿ paths: ["~/project/lighthouse.png"]'
    * `[data-art]`, …), `initDemo()` bails out before ever adding
    * `.scrubbing`, so this CSS never fires and the section falls back to
    * the fully-visible flat rendering instead of getting stuck hidden with
-   * no JS left to turn it back on. (Journey.astro does NOT have this
-   * second gate yet — its own `[data-line]` hiding rules still key off
-   * `.enhanced` alone. Tracked for a future round, not a contradiction.)
+   * no JS left to turn it back on.
+   *
+   * This is a NARROWER protection than index.astro's load-time self-heal
+   * (see enhance.mjs's own top-of-file gate comment): that heal only fires
+   * when the whole module never got as far as setting `enhanceReady` (a
+   * 404'd chunk, a blocked request, a parse error) — `initDemo()` runs well
+   * after that flag is already set, so a markup edit that breaks only THIS
+   * file's own contract, while the rest of the module still loads and runs
+   * fine, would never trip it. `.scrubbing` is what actually covers that
+   * case, for this file. (Journey.astro does NOT have this second gate yet
+   * — its own `[data-line]` hiding rules still key off `.enhanced` alone,
+   * so that same narrower failure mode there would render blank, not flat.
+   * Tracked for a future round, not a contradiction.)
    *
    * `[data-line]`, `[data-typed]`, `[data-caret]` and `[data-art]` are all
    * authored directly in this file's template (including as slotted

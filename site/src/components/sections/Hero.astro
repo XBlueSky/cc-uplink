@@ -18,7 +18,7 @@ const marketplaceSlug = marketplaceName ?? pluginName
       <div class="install">
         <pre><code>/plugin marketplace add {repo}
 /plugin install {pluginName}@{marketplaceSlug}</code></pre>
-        <button type="button" data-copy hidden>copy</button>
+        <button type="button" data-copy>copy</button>
       </div>
       <p class="meta">
         <a href={release.url}>{release.tag}</a> · one static Rust binary · MIT
@@ -91,6 +91,21 @@ const marketplaceSlug = marketplaceName ?? pluginName
     border-color: var(--cyan);
     outline: none;
   }
+  /*
+   * Paint-stable copy button: hidden by CSS, not the `hidden` HTML
+   * attribute — a no-JS visitor gets no `has-clipboard` class (the gate
+   * script in index.astro never runs for them at all) so this rule still
+   * applies and the button still never shows for them. A JS visitor with
+   * Clipboard support gets `has-clipboard` on `<html>` pre-paint, in the
+   * SAME parser-blocking script that decides `enhanced` — so the button is
+   * already `display: inline-block` at first paint, before enhance.mjs has
+   * even started, and wiring the click handler later (initCopyButtons)
+   * causes zero layout shift. This replaces a `hidden` attribute + JS
+   * `button.hidden = false` toggle, which painted the button hidden first
+   * and un-hid it once the module ran — a 37.5px CLS at narrow viewports.
+   */
+  [data-copy] { display: none; }
+  :global(.has-clipboard) [data-copy] { display: inline-block; }
   .meta {
     margin-top: var(--space-s);
     font-family: var(--mono);

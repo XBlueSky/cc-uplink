@@ -20,15 +20,24 @@ import { initAmbience } from './ambience.mjs'
  * synchronously, before the parser reaches `[data-page]` (before first
  * paint). This module (a `<script type="module">`, deferred whether Astro
  * inlines it or chunks it externally — see budget.test.mjs) only ever runs
- * AFTER that, so it just reads the class rather than re-deriving it. Two
- * evaluation sites used to exist — one in index.astro's old inline gate
- * comment, one via this file's own `matchMedia`/`innerWidth` check — which
- * could disagree if the viewport resized between the two (or, before the
- * gate moved to a blocking script, simply because the module script runs
- * later than first paint: a deep link straight to `/#journey` painted the
- * flat transcript first, then flashed to pinned/hidden-lines once this
- * module finally ran). One evaluation site, read twice, can't disagree with
- * itself — see index.astro for the actual check.
+ * AFTER that, so it just reads the class rather than re-deriving it.
+ *
+ * Reading the class back is not the same as trusting it, though: the gate
+ * script stamps `enhanced` (and, independently, `has-clipboard`)
+ * optimistically, before any JS is known to have actually run past that
+ * point. If this module's chunk 404s, is blocked, or fails to parse in an
+ * old browser, those classes would otherwise sit on `<html>` forever with
+ * nothing left alive to satisfy the CSS they gate — every enhanced-only
+ * rule below keeps hiding its target, and the copy buttons stay visible
+ * with no click handler ever wired, both with no script remaining to fix
+ * either. The self-heal in index.astro's gate script closes that gap:
+ * `initEnhance()` below sets `<html>`'s `enhanceReady` dataset flag as the
+ * very first statement of BOTH branches of its flat/enhanced split — proof
+ * this module got at least that far, regardless of which side of the split
+ * a given visitor landed on. A `window.load` listener (armed by the same
+ * gate script, unconditionally) strips `enhanced` and `has-clipboard` back
+ * off if that flag was never set — see index.astro's gate comment for the
+ * full mechanism and why a healthy run, flat or enhanced, never trips it.
  *
  * Every enhanced-only CSS rule in the section components hangs off
  * `.enhanced` for the same reason the gate had to move pre-paint: a flat
@@ -50,7 +59,29 @@ export function initEnhance() {
   // module skipping it entirely.
   const ambience = initPageAmbience()
 
-  if (!document.documentElement.classList.contains('enhanced')) return
+  if (!document.documentElement.classList.contains('enhanced')) {
+    // Proof-of-life for index.astro's load-time self-heal, flat side. A
+    // flat visitor's run is just as "healthy" as an enhanced one — copy
+    // buttons and the hero fallback line are already wired above by this
+    // point, so the self-heal must not strip `has-clipboard` out from under
+    // an already-working button just because this visitor never qualified
+    // for `enhanced` in the first place. See the enhanced-path copy of this
+    // same assignment below for the other half.
+    document.documentElement.dataset.enhanceReady = 'true'
+    return
+  }
+
+  // Proof-of-life for index.astro's load-time self-heal, enhanced side: the
+  // FIRST statement of the enhanced path, not the last thing init does. A
+  // module script always finishes running before `window.load` fires, so
+  // on a healthy page this (or the flat-path copy above) is already set by
+  // the time that listener checks it — the heal is a guaranteed no-op
+  // either way a visitor's run lands. A module that never got as far as
+  // EITHER copy of this assignment (chunk 404, blocked request, parse
+  // error) never sets it, so the heal always fires for that case and the
+  // page falls back to the flat experience. See index.astro's gate comment
+  // for the other half.
+  document.documentElement.dataset.enhanceReady = 'true'
 
   // §2 and §3 are both scroll-position-driven scrubs; they share ONE
   // passive `scroll` listener with a single rAF-guarded tick rather than
@@ -153,7 +184,7 @@ function initJourney() {
     ? youPre.querySelectorAll('[data-line]:not([data-typed])')
     : []
 
-  const peerIdleEl = peerPre?.querySelector('.dim')
+  const peerIdleEl = peerPre?.querySelector('[data-peer-idle]')
   const cmdEl = peerPre?.querySelector('[data-typed]')
   const cmdCaretEl = peerPre?.querySelector('[data-caret]')
   const [envHeadEl, envTailEl, work1El, work2El] = peerPre
@@ -167,15 +198,19 @@ function initJourney() {
   ]
   // The markup contract not being met (a future edit dropping a hook) is
   // handled by returning `null` here rather than throwing mid-scroll and
-  // taking the rest of the page's JS down with it. That much is true. What
-  // is NOT true — corrected here rather than left to mislead the next
-  // reader — is any claim that this alone guarantees a correct flat
-  // fallback: Journey.astro's enhanced-mode CSS hides `[data-line]`
-  // unconditionally off `.enhanced` (no per-instance "only hide once this
-  // actually wired up" gate), so a broken contract here would render
-  // blank, not flat, exactly the bug `initDemo` below was given a
-  // `.scrubbing` gate to avoid. Giving Journey the same treatment is
-  // tracked for a future round, not done here.
+  // taking the rest of the page's JS down with it. That avoids a crash, but
+  // it is NOT the same guarantee index.astro's load-time self-heal gives:
+  // that heal only fires when `initEnhance()` never got as far as setting
+  // `enhanceReady` (the whole module failing to run) — and this function is
+  // called well after that flag is already set (see `initEnhance`), so a
+  // narrower failure limited to THIS function (a future edit dropping just
+  // one of Journey's own hooks, while the rest of the module still loads
+  // and runs fine) doesn't trip it. Journey.astro's enhanced-mode CSS hides
+  // `[data-line]` unconditionally off `.enhanced` (no per-instance "only
+  // hide once this actually wired up" gate the way `initDemo` below has via
+  // `.scrubbing`), so that narrower case would still render blank, not
+  // flat. Giving Journey the same `.scrubbing`-style gate is tracked for a
+  // future round, not done here.
   if (required.some((el) => !el)) return null
 
   // a11y: the pinned scene's letter-by-letter churn is described once, up
@@ -322,13 +357,14 @@ function initDemo() {
   // can get renamed/restyled without anyone thinking of this script; the
   // data attribute is the explicit contract.
   const demoBox = section.querySelector('[data-demo-box]')
+  const pre = demoBox?.querySelector('pre')
 
   const askEl = section.querySelector('[data-typed]')
   const caretEl = section.querySelector('[data-caret]')
   const [callEl, midEl, pathsEl] = section.querySelectorAll('[data-line]:not([data-typed])')
   const artEl = section.querySelector('[data-art]')
 
-  const required = [demoBox, askEl, caretEl, callEl, midEl, pathsEl, artEl]
+  const required = [demoBox, pre, askEl, caretEl, callEl, midEl, pathsEl, artEl]
   if (required.some((el) => !el)) return null
 
   // Unlike initJourney above, this section's CSS does NOT hide anything off
@@ -341,6 +377,13 @@ function initDemo() {
   // back to the fully-visible flat rendering instead of getting stuck
   // hidden forever with no JS left to turn it back on.
   section.classList.add('scrubbing')
+
+  // a11y: same treatment as §2's initJourney above — this pane's typewriter
+  // churn is described once, up front, by the section's adjacent intro
+  // paragraph, so hide the raw replay from assistive tech and drop the
+  // pane's own tabindex so a hidden region can't still catch keyboard focus.
+  pre.setAttribute('aria-hidden', 'true')
+  pre.tabIndex = -1
 
   const askText = askEl.dataset.text ?? ''
   askEl.textContent = ''
@@ -508,13 +551,20 @@ function initHeroLineFallback() {
 /**
  * Clipboard copy buttons. NOT gated behind the motion/flat check above —
  * copying text isn't motion, and a flat visitor deserves a working copy
- * button as much as anyone. Ships `hidden` in the markup (see Hero.astro/
- * FooterCta.astro) and stays hidden for any visitor without a Clipboard
- * API to back it. Selector is deliberately `button[data-copy]`, not just
- * `[data-copy]` — Journey.astro's four beat-copy paragraph blocks used to
- * collide with this exact attribute before Task 2's fix round renamed them
- * to `data-beat-copy`; scoping to `<button>` keeps that renamed-away
- * ambiguity from ever silently coming back.
+ * button as much as anyone. Visibility isn't this function's job any more:
+ * index.astro's pre-paint gate script already added `has-clipboard` to
+ * `<html>` (independently of the `enhanced` check, same reason) whenever
+ * `navigator.clipboard` exists, and Hero.astro/FooterCta.astro's own CSS
+ * (`[data-copy] { display: none }` / `:global(.has-clipboard) [data-copy]`)
+ * shows the button off that class alone — before this module has even
+ * started executing, let alone reached this function. So the button is
+ * already visible (or already correctly absent) by first paint; this
+ * function only ever wires the click handler on top of it. Selector is
+ * deliberately `button[data-copy]`, not just `[data-copy]` — Journey.astro's
+ * four beat-copy paragraph blocks used to collide with this exact attribute
+ * before Task 2's fix round renamed them to `data-beat-copy`; scoping to
+ * `<button>` keeps that renamed-away ambiguity from ever silently coming
+ * back.
  *
  * `writeText()` returns a promise that can reject (permission denied, no
  * secure context, etc.) — both outcomes are handled explicitly (`.then(on
@@ -532,7 +582,6 @@ function initCopyButtons() {
   if (!navigator.clipboard) return
 
   document.querySelectorAll('button[data-copy]').forEach((button) => {
-    button.hidden = false
     const originalLabel = button.textContent
     let revertTimer = null
 

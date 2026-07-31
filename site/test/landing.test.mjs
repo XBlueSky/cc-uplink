@@ -214,6 +214,7 @@ test('every markup hook Task 3/4 depends on is present with the expected count',
     'data-page', 'data-journey', 'data-track', 'data-stage', 'data-beat',
     'data-pane-you', 'data-pane-peer', 'data-beam', 'data-packet',
     'data-demo', 'data-demo-box', 'data-art', 'data-hero-line', 'data-rail',
+    'data-peer-idle',
   ]
   for (const name of expectedOnce) {
     assert.equal(countAttr(html, name), 1, `expected exactly one [${name}]`)
@@ -225,6 +226,7 @@ test('every markup hook Task 3/4 depends on is present with the expected count',
     'data-beat-copy': 4,
     'data-copy': 2,
     'data-spy': 6,
+    'data-pane': 4,
   }
   for (const [name, count] of Object.entries(expectedCounts)) {
     assert.equal(countAttr(html, name), count, `expected exactly ${count} [${name}]`)
@@ -262,6 +264,7 @@ test('the enhancement gate runs pre-paint: a blocking classic script, before [da
   // the flat layout for even one frame before flipping to the enhanced one.
   const scriptRe = /<script\b([^>]*)>([\s\S]*?)<\/script>/g
   let gateIndex = -1
+  let gateBody = ''
   let match
   while ((match = scriptRe.exec(html))) {
     const [, attrs, body] = match
@@ -271,6 +274,7 @@ test('the enhancement gate runs pre-paint: a blocking classic script, before [da
     if (/\basync\b/.test(attrs)) continue
     if (body.includes('prefers-reduced-motion') && body.includes('enhanced')) {
       gateIndex = match.index
+      gateBody = body
       break
     }
   }
@@ -285,6 +289,21 @@ test('the enhancement gate runs pre-paint: a blocking classic script, before [da
   assert.ok(
     gateIndex < dataPageIndex,
     'the enhancement gate script must appear before [data-page] in the document — otherwise the parser could paint some page content before the gate runs',
+  )
+
+  // Self-heal pins: the gate script also arms a `window.load` listener that
+  // reverts `enhanced` (and `has-clipboard`) if enhance.mjs never got far
+  // enough to prove it ran (via the `enhanceReady` dataset flag it sets) —
+  // see enhance.mjs's own top-of-file gate comment and index.astro's gate
+  // comment for the full mechanism. A failed/blocked/parse-broken chunk
+  // must not leave the page pinned half-hidden forever.
+  assert.ok(
+    gateBody.includes('enhanceReady'),
+    'expected the gate script to arm the load-time self-heal via the `enhanceReady` dataset flag',
+  )
+  assert.ok(
+    gateBody.includes("classList.remove('enhanced')"),
+    'expected the gate script self-heal to remove the `enhanced` class when enhance.mjs never ran',
   )
 })
 

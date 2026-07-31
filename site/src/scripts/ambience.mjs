@@ -230,8 +230,12 @@ export function initAmbience({ canvas, reducedMotion }) {
 
   return {
     setProgress(next) {
-      // Idempotent by design: initTimeline emits an initial onProgress(0) on
-      // every path, and the reduced-motion contract is exactly one frame — a
+      // Idempotent by design: enhance.mjs's initEnhance() drives this —
+      // ambience's progress uniform rides the same shared scroll tick as
+      // the §2/§3 scrubs, and that tick's `onScroll()` is called once
+      // immediately after the listener is wired, so every path already
+      // gets an initial call at start-of-page progress before any real
+      // scroll event. The reduced-motion contract is exactly one frame — a
       // same-value call must not trigger a second draw.
       if (next === progress) return
       progress = next
