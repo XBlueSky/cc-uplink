@@ -186,17 +186,37 @@ const REPLY_CMD = "$ tmux send-keys -t %1 -l '[reply id:6b3b20e6] LGTM — one n
   .frame { width: min(640px, 92vw); position: relative; }
   /*
    * Fix-round Major 1: the middle row IS the trace's row — `.beam` is a
-   * real grid item placed there by DOM order (see the markup comment
-   * above it), not an absolutely-positioned overlay anchored to `.panes`'
-   * overall midpoint. That midpoint drifted onto the peer pane once its
-   * height diverged from the you-pane's during the scrub (the peer pane
-   * grows ~50px as its lines reveal); a dedicated 56px row is exactly the
-   * gap between the two panes' actual rendered edges at every frame,
-   * which no longer depends on the two panes staying the same height.
-   * `gap` is gone — the middle row supplies the spacing that used to come
-   * from it.
+   * real grid item placed there, not an absolutely-positioned overlay
+   * anchored to `.panes`' overall midpoint. That midpoint drifted onto
+   * the peer pane once its height diverged from the you-pane's during
+   * the scrub (the peer pane grows ~50px as its lines reveal); a
+   * dedicated 56px row is exactly the gap between the two panes' actual
+   * rendered edges at every frame, which no longer depends on the two
+   * panes staying the same height. `gap` is gone — the middle row
+   * supplies the spacing that used to come from it.
    */
   .panes { display: grid; grid-template-rows: auto 56px auto; position: relative; }
+  /*
+   * Second fix-round pass, same Major: explicit `grid-row` on every child
+   * is LOAD-BEARING, not decorative — relying on DOM order alone (this
+   * rule's first version) broke in flat mode specifically. `.beam` is
+   * `display: none` there (the default; see that rule further below),
+   * and a `display: none` element is never a grid item at all — CSS Grid
+   * treats it exactly as if it weren't in the markup. With only 2 of
+   * these 3 children actually participating, auto-placement packs them
+   * into the grid's FIRST two row tracks in DOM order: `[data-pane-you]`
+   * into row 1, `[data-pane-peer]` into row 2 — the 56px trace row, not
+   * row 3. That squeezed the peer pane's full height into a 56px cell
+   * and, because Pane.astro's own root is `position: relative` (so
+   * overflow isn't clipped by any ancestor), let its content visually
+   * spill ~370px down over the next beat-copy block. Pinning every
+   * child's row explicitly means placement can never again depend on how
+   * many of the three actually show up as grid items — true in flat
+   * mode (2 items), enhanced mode (3 items), and any future state.
+   */
+  [data-pane-you] { grid-row: 1; }
+  .beam { grid-row: 2; }
+  [data-pane-peer] { grid-row: 3; }
   /*
    * Same fix, same reason, as Hero.astro's `.copy { min-width: 0; }`
    * comment (see that file): grid items default to `min-width: auto`,
