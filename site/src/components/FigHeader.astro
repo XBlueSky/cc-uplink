@@ -1,0 +1,45 @@
+---
+// Shared "FIG 0N · TITLE" chrome — the drawing-set numbering that replaces
+// v2's plain eyebrows across all six landing sections (Task 3 of the
+// 2026-07-31 reskin). Numbering is DOM order, not visual order: 01 hero, 02
+// signal journey, 03 images, 04 tools, 05 docs, 06 install — each section
+// component passes its own fixed `n`/`title` rather than this component
+// counting instances, so a future section reorder can't silently renumber
+// itself.
+//
+// Not aria-hidden: unlike the decorative dimension marks/leader callouts
+// the design spec allows (max two, aria-hidden), this is a real caption
+// labelling the section that follows it — same role a printed "FIG 2" runs
+// in an engineering drawing, informative rather than decorative chrome.
+const { n, title } = Astro.props
+const num = String(n).padStart(2, '0')
+---
+<p class="fig">FIG {num} · {title}</p>
+
+<style>
+  /*
+   * Matches docs/superpowers/design/2026-07-31-style-tile.html's `.fig`
+   * block value-for-value: mono clay-ink uppercase label + a leader-toned
+   * rule trailing off to the right, filling whatever width the caller's
+   * own layout gives this paragraph.
+   */
+  .fig {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-s);
+    margin: 0 0 var(--space-l);
+    font-family: var(--mono);
+    font-size: var(--step--1);
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--clay-ink);
+  }
+  .fig::after {
+    content: '';
+    flex: 1;
+    align-self: center;
+    height: 1px;
+    background: var(--leader);
+    opacity: 0.6;
+  }
+</style>

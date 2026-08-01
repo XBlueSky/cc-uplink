@@ -2,31 +2,166 @@
 const { title, active = false } = Astro.props
 ---
 <section class="pane" data-pane data-active={active ? 'true' : 'false'}>
-  {title && <header class="pane-title">{title}</header>}
+  {title && (
+    <header class="pane-title">
+      <span class="pane-title-text">{title}</span>
+      {/*
+        Two decorative "LED" dots — ref-2-frame-exchange.png's terminal
+        chrome, ported as plain CSS circles (no images, no new script).
+        aria-hidden because they carry no state a screen reader visitor
+        needs: unlike data-active (below), nothing ever reads or writes
+        these from JS. They sit in the header's flex row opposite the
+        title text (title left, LEDs right) — see .pane-title's
+        `justify-content: space-between` below.
+      */}
+      <span class="pane-leds" aria-hidden="true">
+        <span class="led led-amber"></span>
+        <span class="led led-green"></span>
+      </span>
+    </header>
+  )}
   <div class="pane-body"><slot /></div>
 </section>
 
 <style>
+  /*
+   * Instrument register (2026-07-31 reskin): the pane is a warm-black CRT
+   * embedded in the paper page, per docs/superpowers/design/
+   * 2026-07-31-style-tile.html's `.pane` block, which this rule set
+   * matches value-for-value (border/shadow/scanline recipe). `--term-line`
+   * covers the plain border; `#7A5A1E` (active border) and the rgba glow
+   * stops below are the style tile's own literals, not promoted to named
+   * tokens by the design spec's Tokens section, so they stay literal here
+   * too rather than inventing a token that doesn't exist.
+   */
   .pane {
-    border: 1px solid var(--pane-border);
-    background: color-mix(in srgb, var(--bg-raised) 70%, transparent);
+    position: relative;
+    border: 1px solid var(--term-line);
+    background: var(--term);
+    box-shadow: 0 2px 14px rgba(60, 45, 20, .18), inset 0 0 30px rgba(255, 156, 27, .05);
     display: flex;
     flex-direction: column;
     min-width: 0;
+    transition: border-color 0.3s, box-shadow 0.3s;
   }
-  .pane[data-active='true'] { border-color: var(--accent-dim); }
+  /*
+   * Scanlines: a full-bleed repeating stripe pattern, multiply-blended,
+   * painted (as generated content) ON TOP of the pane's own text in paint
+   * order — so it darkens the term ground AND whatever text pixels fall
+   * under a darkened row, not just the ground. That means it CAN lower
+   * contrast on those rows, not only raise it (an earlier version of this
+   * comment claimed multiply could only raise contrast against --term;
+   * false once measured — scaling both foreground and background
+   * luminance down by the same multiplier pulls their ratio toward 1, per
+   * the WCAG contrast formula's +0.05 terms).
+   *
+   * Controller ruling on the AA gate this implies: text antialiases across
+   * multiple stripe rows as it renders, so what a reader actually
+   * perceives is close to the SPATIAL AVERAGE across the repeat (2 of
+   * every 3 rows unmultiplied, 1 multiplied by 0.86 -> average multiplier
+   * ~0.953), not the single darkest row. site/test/palette-contrast.test.mjs
+   * therefore asserts every instrument text colour against both plain
+   * --term AND that stripe-average ground; the darkest-single-row number
+   * is reported in that file's comments as information only, never
+   * asserted — it's a floor no reader's eye actually sits at.
+   *
+   * `pointer-events: none` is load-bearing, not decorative: the pane
+   * body's [data-line] spans and the tabindex="0" <pre> regions (see
+   * Journey.astro/InvokeDemo.astro) must stay clickable/focusable
+   * underneath this full-viewport overlay.
+   */
+  .pane::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: repeating-linear-gradient(0deg, rgba(0, 0, 0, .14) 0 1px, transparent 1px 3px);
+    mix-blend-mode: multiply;
+  }
+  /*
+   * Active pane: brighter border + an outer amber glow layered onto the
+   * base box-shadow's drop-shadow/inset-glow pair (the inset glow itself
+   * also bumps from .05 to .09 opacity) — the same three-shadow stack the
+   * style tile's §2 "you" pane uses inline. `transition` on the base
+   * `.pane` rule above animates all of border-color/box-shadow whenever
+   * `data-active` flips. No `prefers-reduced-motion` guard is needed
+   * alongside it: `data-active` only ever changes in enhanced mode (see
+   * enhance.mjs's initJourney), and reaching enhanced mode already implies
+   * motion is allowed.
+   */
+  .pane[data-active='true'] {
+    border-color: #7A5A1E;
+    box-shadow: 0 2px 14px rgba(60, 45, 20, .18), inset 0 0 30px rgba(255, 156, 27, .09), 0 0 26px rgba(255, 156, 27, .12);
+  }
   .pane-title {
-    padding: 0.3rem var(--space-s);
-    border-bottom: 1px solid var(--pane-border);
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-s);
+    padding: 0.4rem var(--space-s);
+    border-bottom: 1px solid var(--term-line);
+    background: rgba(255, 181, 74, .04);
     font-family: var(--mono);
     font-size: var(--step--1);
-    color: var(--fg-dim);
+    /* --term-dim — see tokens.css's own comment on that token for the
+       rationale/measurements (shared across every pane-internal dim/chrome
+       text on this site, not just this header). */
+    color: var(--term-dim);
+  }
+  .pane-title-text {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .pane-leds {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    flex: none;
+  }
+  .led {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+  }
+  .led-amber {
+    background: var(--amber);
+    box-shadow: 0 0 4px color-mix(in srgb, var(--amber) 70%, transparent);
+  }
+  .led-green {
+    background: var(--green);
+    box-shadow: 0 0 4px color-mix(in srgb, var(--green) 70%, transparent);
   }
   .pane-body {
+    position: relative;
     padding: var(--space-m);
     font-family: var(--mono);
     font-size: var(--step--1);
     line-height: 1.7;
+    /* Instrument body text — the style tile's `.pane { color: #f2e7cf }`
+       literal (13.7:1 on --term); see palette-contrast.test.mjs's
+       INSTRUMENT_BODY constant, which asserts this exact hex by name for
+       the same reason it isn't a named token here. */
+    color: #F2E7CF;
     overflow-x: auto;
+  }
+  /*
+   * The storyboard's `.pane pre` wraps long lines
+   * (`white-space: pre-wrap; word-break: break-word`) — without this, the
+   * §2 envelope's reply-instruction tail (the beat-2 teaching content) and
+   * the peer's tmux reply command render as a single line that scrolls
+   * horizontally inside the pane, i.e. they are invisible at rest on every
+   * viewport. The document-level overflow checks never catch this because
+   * `overflow-x: auto` above contains the scroll to the pane itself. Slot
+   * content, hence :global(). Phosphor text-shadow (style tile's `.pane
+   * pre` literal) rides along on the same rule.
+   */
+  .pane-body :global(pre) {
+    margin: 0;
+    white-space: pre-wrap;
+    word-break: break-word;
+    text-shadow: 0 0 8px rgba(255, 181, 74, .2);
   }
 </style>

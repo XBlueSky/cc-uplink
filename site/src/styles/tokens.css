@@ -1,13 +1,66 @@
 :root {
-  --bg: #06070c;
-  --bg-raised: #0a0c14;
-  --fg: #e6e9f0;
-  --fg-dim: #8b93a7;
-  --accent: #5b7cfa;
-  --accent-dim: #2e3f7d;
-  --cyan: #58c5d4;
-  --pane-border: #1c2130;
+  /*
+   * -----------------------------------------------------------------
+   * "Ink and light" — cc-uplink is a warm ivory engineering drawing.
+   * Two worlds share the page:
+   *
+   *   Paper world (ink): everything printed ON the paper — headings,
+   *   body copy, leader lines, FIG labels, title blocks — speaks warm
+   *   ink-black and terracotta clay.
+   *
+   *   Instrument world (light): terminal Panes are instruments embedded
+   *   in the drawing — warm-black CRTs with amber phosphor text, the
+   *   only sources of light on the page.
+   *
+   *   Role rule: clay is ink on paper; amber is light in instruments
+   *   (and on the §2 signal trace). The two oranges never swap roles —
+   *   clay never sits on a dark instrument ground, amber never appears
+   *   as body ink on paper.
+   *
+   *   Exception: the install strip's CTA button (Hero.astro's and
+   *   FooterCta.astro's `.install button`) is the ONE sanctioned
+   *   clay-on-instrument use — a paper-world control docked into the
+   *   instrument strip, not instrument chrome itself. Ink-on-clay
+   *   measures 5.40:1, comfortably clearing AA; see those two files'
+   *   own comments on that rule.
+   * -----------------------------------------------------------------
+   */
 
+  /* Paper world (ink) */
+  --paper: #F5F2E9;
+  --paper-2: #EDE8DA;
+  --manilla: #EBDBBC;
+  --ink: #1F1D17;
+  --ink-dim: #6D6455;
+  --clay: #D97757;
+  --clay-ink: #A34D30;
+  --leader: #B09468;
+  /* Paper-world component fill — the faint white-ish veil DocsCards' cards
+     and ToolsGrid's schematic boxes/chips sit on over the paper-grid
+     ground, so those two "component" surfaces read as one family. */
+  --paper-veil: rgba(255, 255, 255, .5);
+
+  /* Instrument world (light) */
+  --term: #201D16;
+  --term-line: #3D341D;
+  --amber: #FFB54A;
+  --amber-hi: #FFD694;
+  --signal: #ff9c1b;
+  --green: #8ADF7F;
+  /*
+   * Dim instrument chrome/reply-context text: Pane.astro's header line,
+   * StatusLine's window links, and the `.dim` de-emphasis colour
+   * Journey/InvokeDemo/404 all give their pane-internal text point at
+   * this one token instead of repeating the literal hex per file. 5.64:1
+   * against --term (plain); 5.24:1 against the scanline's stripe-average
+   * ground (see palette-contrast.test.mjs's stripe-average assertions and
+   * Pane.astro's ::after comment for that math) — clears AA (>=4.5)
+   * either way.
+   */
+  --term-dim: #A99364;
+
+  /* Type: three voices — serif display, sans body, mono instrument */
+  --serif: 'Instrument Serif', 'Iowan Old Style', Georgia, serif;
   --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace;
   --sans: -apple-system, BlinkMacSystemFont, "Inter", system-ui, sans-serif;
 
@@ -16,6 +69,15 @@
   --step-1: clamp(1.35rem, 1.2rem + 0.7vw, 1.8rem);
   --step-2: clamp(1.9rem, 1.5rem + 1.8vw, 3rem);
   --step-3: clamp(2.6rem, 1.8rem + 3.6vw, 5rem);
+  /*
+   * Instrument Serif at its only available weight (400) reads visibly
+   * lighter than the bold sans it replaced — browser-checked at 1440 and
+   * 390: --step-3 alone looked thin next to Hero's sub/install block at
+   * both widths, so this bumps it ~12%. Hero.astro is the only consumer;
+   * promoted to a token (rather than a Hero-local calc()) so the exact
+   * multiplier lives in one place alongside the rest of the type scale.
+   */
+  --h1-size: calc(var(--step-3) * 1.12);
 
   --space-s: 0.75rem;
   --space-m: 1.5rem;
@@ -25,26 +87,31 @@
   /*
    * Shiki (astro.config.mjs's `markdown.shikiConfig.theme: 'css-variables'`)
    * paints docs code blocks with these instead of a bundled theme's
-   * hardcoded hex, so syntax-highlighted code uses this site's own palette
-   * and can be measured against the background it actually renders on
-   * (--bg-raised, same as Doc.astro's `.doc pre`). Every one of these is
-   * >=4.5:1 (WCAG AA) against --bg-raised — verified in
-   * site/test/contrast.test.mjs, not eyeballed. Where an existing token
-   * already cleared the floor it is reused rather than duplicated (comment,
-   * keyword, string all point at --fg-dim/--accent/--cyan); constant,
-   * function, inserted, and deleted have no existing equivalent so are
-   * defined here specifically for code, chosen from the same cool-with-one-
-   * warm-accent family as the rest of the palette.
+   * hardcoded hex, so syntax-highlighted code uses this site's own
+   * palette and can be measured against the background it actually
+   * renders on. Code blocks and Panes stay dark instruments in this
+   * reskin (spec: "code-on-dark is now a design feature, not a
+   * leftover") — deliberately NOT pointed at --ink/--ink-dim, which mean
+   * dark ink for the paper world and would be almost invisible on
+   * a dark code background; instead these point straight at the
+   * instrument-world tokens (or the instrument body/leader tones also
+   * used by Panes), each independently verified >=4.5:1 (WCAG AA)
+   * against --term in site/test/palette-contrast.test.mjs (amber, green,
+   * and #F2E7CF are asserted there by name; leader was checked by hand
+   * at 5.83:1) — pointed straight at --amber/--green rather than through
+   * the transitional accent-highlight alias (deleted along with the rest
+   * of the legacy v2 alias block this same task), so that cleanup could
+   * never silently break code-block colours.
    */
-  --astro-code-foreground: var(--fg);
-  --astro-code-background: var(--bg-raised);
-  --astro-code-token-comment: var(--fg-dim);
-  --astro-code-token-keyword: var(--accent);
-  --astro-code-token-string: var(--cyan);
-  --astro-code-token-string-expression: var(--cyan);
-  --astro-code-token-parameter: var(--cyan);
-  --astro-code-token-link: var(--cyan);
-  --astro-code-token-punctuation: var(--fg-dim);
+  --astro-code-foreground: #F2E7CF;
+  --astro-code-background: var(--term);
+  --astro-code-token-comment: var(--leader);
+  --astro-code-token-keyword: var(--amber);
+  --astro-code-token-string: var(--green);
+  --astro-code-token-string-expression: var(--green);
+  --astro-code-token-parameter: var(--green);
+  --astro-code-token-link: var(--green);
+  --astro-code-token-punctuation: var(--leader);
   --astro-code-token-constant: #e0a458;
   --astro-code-token-function: #b98bd6;
   --astro-code-token-inserted: #7ec699;
@@ -54,12 +121,20 @@
 
 *, *::before, *::after { box-sizing: border-box; }
 
-html { color-scheme: dark; }
+html { color-scheme: light; }
 
+/*
+ * No background/color here: Base.astro's own global `body { ... }` rule
+ * sets both (paper ground + the two-layer graph grid, ink text) and wins
+ * by emission order — tokens.css loads first, Base.astro's <style
+ * is:global> block after, so a declaration here would never be the one
+ * that actually paints. Keeping it would misrepresent which layer
+ * controls the page background/text colour (carried Task-1-review
+ * finding: this was an unpinned assumption, now made explicit by this
+ * comment and the deletion below).
+ */
 body {
   margin: 0;
-  background: var(--bg);
-  color: var(--fg);
   font-family: var(--sans);
   font-size: var(--step-0);
   line-height: 1.6;
@@ -68,9 +143,23 @@ body {
 
 code, pre, .mono { font-family: var(--mono); }
 
-a { color: var(--cyan); }
+/*
+ * Paper-world default: most anchors and every plain focus ring sit
+ * directly on paper, not inside a dark instrument. --green (the old
+ * default) measures 1.45:1 there — functionally invisible; --clay-ink
+ * is the paper-world ink/link tone (5.1:1 on paper, clears both the 4.5:1
+ * text floor and the 3:1 non-text/ring floor). DocsCards' cards sit on
+ * PAPER (a translucent --paper-veil fill, not an instrument ground) and
+ * keep this default unchanged. Components whose anchor or focusable sits
+ * on an instrument ground instead — StatusLine's links, the 404 pane
+ * link, the install-strip button, and the three tabindex="0" pane `<pre>`
+ * regions (Journey.astro's two panes, InvokeDemo.astro's one) — give
+ * their own :focus-visible/colour override tuned to THEIR ground; see
+ * each file's own comment. --clay-ink there would fall under 3:1.
+ */
+a { color: var(--clay-ink); }
 
 :focus-visible {
-  outline: 2px solid var(--cyan);
+  outline: 2px solid var(--clay-ink);
   outline-offset: 2px;
 }

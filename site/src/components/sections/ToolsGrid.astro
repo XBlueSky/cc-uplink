@@ -1,0 +1,272 @@
+---
+import FigHeader from '../FigHeader.astro'
+
+const { tools } = Astro.props
+
+const drivers = ['tmux', 'image:openai', 'image:codex', '…the next one']
+
+// ── Architecture mini-schematic geometry ─────────────────────────────────
+// Six tool boxes on a fixed row, a dashed bus, four driver boxes plugged in
+// underneath — computed here rather than hand-placed so the layout can't
+// drift out of sync with `tools`/`drivers` above.
+//
+// Fix-round Nit 5+6: box widths are DERIVED from each row's own longest
+// label at the declared font size, not a hand-picked constant — the
+// previous fixed `TOOL_BOX_W = 66` had the longest label ("DESCRIBE") at
+// 58 of 66 available units, a margin so tight that any future tool/driver
+// name a couple of characters longer would have silently overflowed its
+// box with no build-time signal. `CHAR_W = 0.6` is not a guess: it's this
+// exact mono stack's own measured advance width, back-derived from that
+// same "58 units for 8 chars at font-size 12" figure the review flagged
+// (58 / (8 * 12) = 0.604).
+const TOOL_LABEL_SIZE = 13
+const CHAR_W = 0.6
+const BOX_PAD = 10 // total horizontal padding inside a box, both sides
+const GAP = 8 // gap between boxes, and from the row's own edges
+
+/** Width (in viewBox units) a box needs to fit its widest label without clipping. */
+function deriveBoxWidth(labels, fontSize) {
+  const maxLen = Math.max(...labels.map((l) => l.length))
+  return Math.ceil(maxLen * fontSize * CHAR_W) + BOX_PAD
+}
+
+// Box labels drop the shared "channel_" prefix (every one of the six tools
+// carries it) so the short suffix fits a box this size at a legible font —
+// the full name is never lost, it's one line down in the accessible
+// `<ul class="chips">` list this diagram sits above. Same idea for drivers
+// (`image:` prefix stripped).
+const toolLabels = tools.map((tool) => tool.replace(/^channel_/, '').toUpperCase())
+const driverLabels = drivers.map((driver) =>
+  driver.replace(/^image:/, '').replace('…the next one', '+ next').toUpperCase(),
+)
+
+const TOOL_BOX_W = deriveBoxWidth(toolLabels, TOOL_LABEL_SIZE)
+const DRIVER_BOX_W = deriveBoxWidth(driverLabels, TOOL_LABEL_SIZE)
+const TOOL_BOX_H = 32
+const TOOL_Y = 16
+const DRIVER_BOX_H = 30
+const DRIVER_Y = 142
+const BUS_Y = 96
+const VB_H = 190
+
+// Each row's own natural width (its boxes + gaps, no outer margin logic
+// beyond GAP itself); the viewBox is exactly the wider of the two, so
+// neither row is ever cropped, and the narrower row is centred inside it
+// below.
+const toolRowW = toolLabels.length * TOOL_BOX_W + (toolLabels.length + 1) * GAP
+const driverRowW = driverLabels.length * DRIVER_BOX_W + (driverLabels.length + 1) * GAP
+const VB_W = Math.max(toolRowW, driverRowW)
+
+/**
+ * Evenly spaces `n` boxes of width `boxW` across a row of width `rowW`,
+ * with `n + 1` equal gaps (margins included), then centres that whole row
+ * within the shared `VB_W` if it's narrower than the other row — the same
+ * "distribute the remainder" layout `.chips`'s own flexbox does
+ * automatically, just computed in the frontmatter since these coordinates
+ * have to be static SVG attributes.
+ */
+function layoutRow(n, boxW, rowW) {
+  const gap = (rowW - n * boxW) / (n + 1)
+  const offset = (VB_W - rowW) / 2
+  return Array.from({ length: n }, (_, i) => offset + gap + i * (boxW + gap))
+}
+
+const toolXs = layoutRow(toolLabels.length, TOOL_BOX_W, toolRowW)
+const toolBoxes = toolLabels.map((label, i) => ({ label, x: toolXs[i] }))
+
+const driverXs = layoutRow(driverLabels.length, DRIVER_BOX_W, driverRowW)
+const driverBoxes = driverLabels.map((label, i) => ({ label, x: driverXs[i] }))
+---
+<section class="tools-sec" id="tools" aria-labelledby="tools-heading">
+  <div>
+    <FigHeader n={4} title="TOOLS" />
+    <div class="intro" data-reveal>
+      <h2 id="tools-heading">Adding a driver adds zero tools</h2>
+      <p class="body">
+        Drivers plug in underneath a fixed surface. However many ways Claude
+        can reach the outside world, the tool listing stays exactly this long.
+      </p>
+    </div>
+    <div class="schematic" data-reveal>
+      <svg
+        viewBox={`0 0 ${VB_W} ${VB_H}`}
+        preserveAspectRatio="xMidYMid meet"
+        role="img"
+        aria-label="Six fixed MCP tools on a stable surface; drivers plug in underneath without adding tools"
+      >
+        {toolBoxes.map((box) => (
+          <Fragment>
+            <line
+              class="stub"
+              x1={box.x + TOOL_BOX_W / 2} y1={TOOL_Y + TOOL_BOX_H}
+              x2={box.x + TOOL_BOX_W / 2} y2={BUS_Y}
+              vector-effect="non-scaling-stroke"
+            />
+            <rect
+              class="tool-box"
+              x={box.x} y={TOOL_Y} width={TOOL_BOX_W} height={TOOL_BOX_H}
+              vector-effect="non-scaling-stroke"
+            />
+            <text class="tool-label" x={box.x + TOOL_BOX_W / 2} y={TOOL_Y + TOOL_BOX_H / 2 + 4} text-anchor="middle">
+              {box.label}
+            </text>
+          </Fragment>
+        ))}
+        <line class="bus" x1="6" y1={BUS_Y} x2={VB_W - 6} y2={BUS_Y} vector-effect="non-scaling-stroke" />
+        {driverBoxes.map((box) => (
+          <Fragment>
+            <line
+              class="stub"
+              x1={box.x + DRIVER_BOX_W / 2} y1={BUS_Y}
+              x2={box.x + DRIVER_BOX_W / 2} y2={DRIVER_Y}
+              vector-effect="non-scaling-stroke"
+            />
+            <rect
+              class="driver-box"
+              x={box.x} y={DRIVER_Y} width={DRIVER_BOX_W} height={DRIVER_BOX_H}
+              vector-effect="non-scaling-stroke"
+            />
+            <text class="driver-label" x={box.x + DRIVER_BOX_W / 2} y={DRIVER_Y + DRIVER_BOX_H / 2 + 4} text-anchor="middle">
+              {box.label}
+            </text>
+          </Fragment>
+        ))}
+      </svg>
+    </div>
+    <ul class="chips" aria-label="The six fixed tools">
+      {tools.map((tool) => <li class="chip" data-reveal>{tool}</li>)}
+    </ul>
+    <p class="surface-note" data-reveal><span aria-hidden="true">▲</span> fixed surface — 6 tools</p>
+    <ul class="chips drivers" aria-label="Drivers">
+      {drivers.map((driver) => <li class="chip drv" data-reveal>{driver}</li>)}
+    </ul>
+  </div>
+</section>
+
+<style>
+  .tools-sec {
+    padding: var(--space-xl) var(--space-m);
+    max-width: 900px;
+    margin: 0 auto;
+    text-align: center;
+  }
+  h2 { font-size: var(--step-2); line-height: 1.1; margin: 0 0 var(--space-m); }
+  .body { color: var(--ink-dim); max-width: 52ch; margin: 0 auto var(--space-l); }
+
+  /*
+   * The architecture mini-schematic (design spec §4/ToolsGrid, ref-1's own
+   * fig-2 framing): ink strokes for the boxes/bus stubs, clay-ink labels,
+   * a dashed bus spine. Capped at a moderate max-width so it reads as a
+   * compact instrument diagram rather than a full-bleed poster on wide
+   * screens; `vector-effect="non-scaling-stroke"` (set per-shape above)
+   * keeps every stroke a constant on-screen weight regardless of how much
+   * the viewBox scales up or down to fill that width.
+   */
+  .schematic {
+    max-width: 460px;
+    margin: var(--space-l) auto 0;
+  }
+  .schematic svg {
+    display: block;
+    width: 100%;
+    height: auto;
+  }
+  .tool-box, .driver-box {
+    fill: var(--paper-veil);
+    stroke: var(--ink);
+    stroke-width: 1.25;
+  }
+  .driver-box {
+    stroke-dasharray: 4 3;
+  }
+  .stub {
+    stroke: var(--ink);
+    stroke-width: 1.1;
+  }
+  /*
+   * Fix-round Minor 3: was `--leader` (2.58:1 against paper) — the same
+   * token this branch's Rail.astro carried-item fix ruled out on WCAG
+   * 1.4.11 non-text-contrast grounds (a 3:1 floor). `--ink-dim` (4.8:1)
+   * clears it with room to spare; labels stay clay-ink, unaffected.
+   */
+  .bus {
+    stroke: var(--ink-dim);
+    stroke-width: 1.6;
+    stroke-dasharray: 5 4;
+  }
+  .tool-label, .driver-label {
+    font-family: var(--mono);
+    font-size: 13px;
+    fill: var(--clay-ink);
+  }
+
+  .chips {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: var(--space-s);
+    margin: var(--space-l) 0 0;
+    padding: 0;
+    list-style: none;
+  }
+  /*
+   * Ink-bordered paper components (design spec §4): a leader border and a
+   * faint white-ish fill on the paper-grid ground, ink mono text — driver
+   * chips (below) stay dashed to read as "plugged in", not fixed.
+   */
+  .chip {
+    font-family: var(--mono);
+    font-size: var(--step--1);
+    padding: 0.5rem var(--space-s);
+    border: 1px solid var(--leader);
+    background: var(--paper-veil);
+    color: var(--ink);
+  }
+  .chip.drv {
+    border-style: dashed;
+    color: var(--ink-dim);
+    background: none;
+  }
+  .surface-note {
+    font-family: var(--mono);
+    font-size: var(--step--1);
+    color: var(--ink-dim);
+    margin: var(--space-m) 0;
+  }
+
+  /*
+   * ── Enhanced mode: one-time reveal ─────────────────────────────────
+   * Hangs off `.enhanced` (see Journey.astro's own enhanced block for why:
+   * a flat visitor never gets the class, so this section's flat CSS — every
+   * `[data-reveal]` target fully visible, no transform — stands unchanged
+   * as the whole experience for them). enhance.mjs's shared IntersectionObserver
+   * adds `.in` once each target crosses 25% visible, then stops watching it.
+   *
+   * Stagger uses `:nth-child` (not inline `transition-delay`, which would
+   * mean putting a `style` attribute on markup the hook-inventory test in
+   * landing.test.mjs pins the exact shape of) — each `.chips` list restarts
+   * its own delay count from its first `.chip`, same as the storyboard's
+   * two independently-staggered chip rows.
+   */
+  :global(.enhanced) [data-reveal] {
+    opacity: 0;
+    translate: 0 26px;
+    transition: opacity 0.7s ease, translate 0.7s ease;
+  }
+  :global(.enhanced) [data-reveal].in {
+    opacity: 1;
+    translate: none;
+  }
+  /* These `:nth-child` rules only win the `transition-delay` sub-property
+     over the `[data-reveal]` shorthand above because they're MORE specific
+     (`.enhanced .chips .chip:nth-child(n)` outranks `.enhanced
+     [data-reveal]`) — simplifying this selector (e.g. down to a bare
+     `.chip:nth-child(n)`) can drop it below the shorthand's specificity and
+     silently zero out the stagger. */
+  :global(.enhanced) .chips .chip:nth-child(1) { transition-delay: 0s; }
+  :global(.enhanced) .chips .chip:nth-child(2) { transition-delay: 0.06s; }
+  :global(.enhanced) .chips .chip:nth-child(3) { transition-delay: 0.12s; }
+  :global(.enhanced) .chips .chip:nth-child(4) { transition-delay: 0.18s; }
+  :global(.enhanced) .chips .chip:nth-child(5) { transition-delay: 0.24s; }
+  :global(.enhanced) .chips .chip:nth-child(6) { transition-delay: 0.3s; }
+</style>

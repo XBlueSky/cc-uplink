@@ -1,0 +1,58 @@
+<nav class="rail" data-rail aria-label="page progress">
+  <a href="#hero" data-spy="hero" title="home" aria-label="home"></a>
+  <a href="#journey" data-spy="journey" title="signal journey" aria-label="signal journey"></a>
+  <a href="#images" data-spy="images" title="images" aria-label="images"></a>
+  <a href="#tools" data-spy="tools" title="six tools" aria-label="six tools"></a>
+  <a href="#docs" data-spy="docs" title="docs" aria-label="docs"></a>
+  <a href="#end" data-spy="end" title="install" aria-label="install"></a>
+</nav>
+
+<style>
+  .rail {
+    position: fixed;
+    right: 14px;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 20;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  /*
+   * The rail sits directly on the paper page, not inside an instrument —
+   * ticks are ink chrome, not phosphor. The old link-accent alias (a
+   * Task-1-review carried finding) pointed at `--green`, which measures
+   * 1.45:1 against paper — functionally invisible.
+   *
+   * Task 3 carried ruling: an earlier pass here used `--leader`/`--clay`
+   * for the two tick states, but those are large-graphic tokens (3:1
+   * floor) and a 7px tick is non-text UI, not large text/graphics — it
+   * still has to clear WCAG 1.4.11's 3:1 non-text floor, which `--leader`
+   * (2.1:1 on paper) and `--clay` (2.79:1 on paper) both fail. `--ink-dim`
+   * (4.8:1) and `--clay-ink` (5.1:1) are the paper-world tokens that
+   * actually clear it.
+   */
+  .rail a {
+    display: block;
+    width: 7px;
+    height: 7px;
+    border-radius: 1px;
+    background: var(--ink-dim);
+    transition: background 0.25s, transform 0.25s;
+  }
+  .rail a.on {
+    background: var(--clay-ink);
+    transform: scale(1.35);
+  }
+  .rail a:focus-visible {
+    outline: 1px solid var(--ink);
+    outline-offset: 3px;
+  }
+
+  /* Matches the storyboard's own breakpoint: the rail competes with thumb
+     reach on narrow viewports, and scroll position is self-evident there
+     without a chrome element pointing at it. */
+  @media (max-width: 760px) {
+    .rail { display: none; }
+  }
+</style>

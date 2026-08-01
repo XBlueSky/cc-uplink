@@ -1,0 +1,162 @@
+---
+import FigHeader from '../FigHeader.astro'
+
+const { release, repo, pluginName, marketplaceName } = Astro.props
+// Same marketplace-name-vs-plugin-name distinction as Hero.astro — see that
+// file for why the fallback exists.
+const marketplaceSlug = marketplaceName ?? pluginName
+const repoUrl = `https://github.com/${repo}`
+
+// Build-time only — this is Astro frontmatter, which runs once per static
+// build (SSG), not per-request, so `new Date()` here is the build date, not
+// a visitor's local clock. Matches the title block's own DATE cell format
+// (ref-2-frame-exchange.png's title block, YYYY-MM-DD via ISO 8601's own
+// slice).
+const buildDate = new Date().toISOString().slice(0, 10)
+---
+<footer id="end" aria-labelledby="footer-heading">
+  <div class="fig-wrap"><FigHeader n={6} title="INSTALL" /></div>
+  <div data-reveal>
+    <h2 id="footer-heading">Open a channel</h2>
+    {/*
+      Title block strip (ref-2-frame-exchange.png's own bottom-right table,
+      collapsed to one bordered mono row) — aria-hidden because every fact
+      in it duplicates something already readable elsewhere on the page
+      (release tag in `.meta` below, current date implicit in "latest
+      release"), so it's decorative drawing-set framing, not new
+      information a screen reader visitor is missing.
+    */}
+    <p class="title-block" aria-hidden="true">
+      DWG NO CC-UPLINK · REV {release.tag} · DATE {buildDate} · SHEET 1/1
+    </p>
+    <div class="install">
+      <pre><code>/plugin marketplace add {repo}
+/plugin install {pluginName}@{marketplaceSlug}</code></pre>
+      <button type="button" data-copy>copy</button>
+    </div>
+    {/* source-line wrapping is deliberate: a newline adjacent to a tag
+         edge collapses to zero-width, not a space, so this stays on one
+         line rather than wrapping next to the two <a> tags */}
+    <p class="meta">
+      <a href={release.url}>{release.tag}</a> · MIT · <a href={repoUrl}>github.com/{repo}</a>
+    </p>
+  </div>
+</footer>
+
+<style>
+  footer {
+    padding: var(--space-xl) var(--space-m);
+    text-align: center;
+    position: relative;
+  }
+  .fig-wrap { max-width: 1200px; margin: 0 auto; }
+  h2 { font-size: var(--step-2); line-height: 1.1; margin: 0 0 var(--space-l); }
+  /*
+   * Title block strip (ref-2-frame-exchange.png's DWG NO/REV/DATE/SHEET
+   * table, collapsed to one row) — a bordered mono line above the install
+   * repeat, same instrument-adjacent chrome language as a Pane's own
+   * header but sitting on paper, so it uses the paper-world leader border
+   * rather than a term-line one.
+   */
+  .title-block {
+    display: inline-block;
+    margin: 0 0 var(--space-m);
+    padding: 0.4rem var(--space-m);
+    font-family: var(--mono);
+    font-size: var(--step--1);
+    letter-spacing: 0.04em;
+    color: var(--ink-dim);
+    border: 1px solid var(--leader);
+  }
+  .install {
+    display: inline-flex;
+    /*
+     * `inline-flex` shrink-to-fits to its content's PREFERRED (max-content)
+     * width — unlike Hero.astro's `.install` (a block-level `display: flex`,
+     * which fills its container's available width and so was never at
+     * risk here), an inline-level box's shrink-to-fit sizing ignores the
+     * containing block's width entirely unless capped. The install `<pre>`
+     * below has its own `overflow-x: auto`, but that only turns overflow
+     * into a scrollbar once something has already bounded this box's
+     * outer width — without `max-width: 100%` this element's un-scrolled,
+     * un-clamped preferred width (the full unbroken install command, ~336px)
+     * became the footer's actual rendered width at a 320px viewport,
+     * blowing out the page's horizontal scroll.
+     */
+    max-width: 100%;
+    align-items: flex-start;
+    gap: var(--space-s);
+    flex-wrap: wrap;
+    padding: var(--space-m);
+    background: var(--term);
+    border: 1px solid var(--term-line);
+    text-align: left;
+  }
+  .install pre {
+    margin: 0;
+    font-family: var(--mono);
+    font-size: var(--step--1);
+    color: var(--amber);
+    overflow-x: auto;
+  }
+  /* Clay button, ink label — the install repeat, styled identically to
+     Hero.astro's own `.install button` (see that file's comment: this is
+     the one sanctioned clay-on-instrument use, tokens.css's Role rule;
+     ink-on-clay measures 5.40:1). */
+  .install button {
+    flex: none;
+    font-family: var(--mono);
+    font-size: var(--step--1);
+    color: var(--ink);
+    background: var(--clay);
+    border: none;
+    padding: 0.25rem var(--space-s);
+    cursor: pointer;
+    transition: opacity 0.2s;
+  }
+  .install button:hover {
+    opacity: 0.85;
+  }
+  /* Focus ring: --ink, inset — see Hero.astro's own `.install button:
+     focus-visible` comment for why (the ring's ground is the button's own
+     clay fill, not the surrounding term strip; ink-on-clay 5.40:1). */
+  .install button:focus-visible {
+    outline: 2px solid var(--ink);
+    outline-offset: -4px;
+  }
+  /*
+   * Paint-stable copy button — same mechanism/rationale as Hero.astro's own
+   * `[data-copy]` rule (see that file's comment): hidden by CSS keyed off
+   * `has-clipboard` (stamped on `<html>` pre-paint, alongside `enhanced`, by
+   * index.astro's gate script), not the `hidden` HTML attribute + a later
+   * JS un-hide, so the module wiring the click handler causes zero shift.
+   */
+  [data-copy] { display: none; }
+  :global(.has-clipboard) [data-copy] { display: inline-block; }
+  .meta {
+    margin-top: var(--space-m);
+    font-family: var(--mono);
+    font-size: var(--step--1);
+    color: var(--ink-dim);
+  }
+  /* Both links — release tag and GitHub repo — read clay-ink, matching
+     Hero.astro's identical release link (design spec: "GitHub link
+     clay-ink"). */
+  .meta a { color: var(--clay-ink); }
+  .meta a:hover { color: var(--ink); }
+
+  /*
+   * ── Enhanced mode: one-time reveal ─────────────────────────────────
+   * Same rule/rationale as ToolsGrid.astro's own enhanced block. Just one
+   * `[data-reveal]` target here (the whole footer body), so no stagger.
+   */
+  :global(.enhanced) [data-reveal] {
+    opacity: 0;
+    translate: 0 26px;
+    transition: opacity 0.7s ease, translate 0.7s ease;
+  }
+  :global(.enhanced) [data-reveal].in {
+    opacity: 1;
+    translate: none;
+  }
+</style>

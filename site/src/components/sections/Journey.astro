@@ -1,0 +1,532 @@
+---
+import Pane from '../Pane.astro'
+import FigHeader from '../FigHeader.astro'
+
+// Every line below is a JS string constant reused for BOTH a span's
+// `data-text` attribute and its rendered children, so Astro's own HTML
+// escaping runs identically on both — the two can never drift out of sync
+// the way two hand-escaped copies of the same string could.
+//
+// Wire strings mirror `src/core/envelope.rs::format_outbound`'s
+// `ReplyHint::Full` shape exactly (from:claude, pane:%1, id:6b3b20e6,
+// message:"review my diff"): head = `[uplink from:{from} pane:{own_pane}
+// id:{id}] {message}`, tail = ` (reply: run \`tmux send-keys -t {own_pane}
+// -l '[reply id:{id}] <your answer>' \; send-keys -t {own_pane} Enter\`)`.
+const ASK = '> ask codex to review my diff'
+const CALL = '⏺ channel_send(to: "tmux:%3", message: "review my diff")'
+const RECEIPT = '  ⎿ delivered · id:6b3b20e6 · injection verified'
+const REPLY = '[reply id:6b3b20e6] LGTM — one nit: retry.rs:41 swallows the error cause'
+
+const IDLE = '▌idle'
+const ENV_HEAD = '[uplink from:claude pane:%1 id:6b3b20e6] review my diff'
+const ENV_TAIL = " (reply: run `tmux send-keys -t %1 -l '[reply id:6b3b20e6] <your answer>' \\; send-keys -t %1 Enter`)"
+const WORK1 = '> reading the envelope… reviewing 3 files'
+const WORK2 = '> retry.rs:41 swallows the error cause'
+const REPLY_CMD = "$ tmux send-keys -t %1 -l '[reply id:6b3b20e6] LGTM — one nit: retry.rs:41 swallows the error cause' \\; send-keys -t %1 Enter"
+---
+<section id="journey" data-journey aria-label="signal journey">
+  {/*
+    Always present, regardless of flat/enhanced — the flat page's two <pre>
+    panes are themselves readable, so this is a plain-language summary
+    layered in front of them, not a replacement. In enhanced mode
+    enhance.mjs marks both <pre> panes aria-hidden (the pinned scrub types
+    them out letter by letter, which a screen reader would otherwise read
+    as it happens); this paragraph is what stays describing the exchange
+    for that visitor, and it never depends on JS to exist or to be visible
+    to sighted users — CSS clips it unconditionally.
+  */}
+  <p class="sr-only">
+    Transcript: you ask codex, running in the pane next door, to review your
+    diff via <span class="k">channel_send</span>. cc-uplink delivers the
+    request as one injected line in codex's terminal, carrying the exact
+    reply command to run. Codex reviews three files, notes that
+    retry.rs:41 swallows the error cause, and runs the reply command
+    verbatim. The reply — "LGTM — one nit: retry.rs:41 swallows the error
+    cause" — lands back in your own pane, correlation id matching the one
+    you sent.
+  </p>
+  <div class="fig-wrap"><FigHeader n={2} title="SIGNAL JOURNEY" /></div>
+  <div class="track" data-track>
+    <div class="stage" data-stage>
+      <div class="stage-inner">
+        <div class="frame">
+          <p class="beatmark">signal journey <b data-beat>[4/4]</b></p>
+          <div class="panes">
+            <div data-pane-you>
+              <Pane title="tmux:%1 — claude (you)" active={true}>
+                <pre tabindex="0" role="region" aria-label="tmux pane contents: your side of the exchange">$ claude
+<span data-line data-typed data-text={ASK}>{ASK}</span><span class="caret" data-caret aria-hidden="true">▊</span>
+<span data-line data-text={CALL}>{CALL}</span>
+<span class="dim" data-line data-text={RECEIPT}>{RECEIPT}</span>
+<span class="reply" data-line data-text={REPLY}>{REPLY}</span></pre>
+              </Pane>
+            </div>
+            {/*
+              The trace is a real GRID ITEM occupying its own row between
+              the two panes (see `.panes { grid-template-rows: auto Npx
+              auto }` below) — not absolutely positioned against `.panes`'
+              overall midpoint. That midpoint drifted onto the peer pane's
+              own border on the return leg (fix-round Major 1): the peer
+              pane grows ~50px as its envelope/work lines reveal, so a
+              midpoint computed from the CONTAINER's total height stopped
+              matching the actual visual gap between the two panes once
+              their heights diverged. A dedicated row is exactly as tall as
+              the gap, always, regardless of how either pane's content
+              height changes during the scrub — DOM order here (between
+              the two pane wrappers, not after both) is what makes the
+              grid's default row auto-placement put it in the middle row
+              without needing explicit `grid-row` on every item.
+            */}
+            <div class="beam" data-beam aria-hidden="true">
+              {/*
+                The signal trace (ref-2-frame-exchange.png's shape, ported to
+                this section's vertically-stacked panes): a stub down from
+                the you-pane's edge, a long horizontal dashed run, a stub
+                down into the peer-pane's edge. `preserveAspectRatio="none"`
+                stretches the run to the `.beam` box's actual width — the
+                same box `initJourney`'s packet math (site/src/scripts/
+                enhance.mjs) reads via `beamEl.clientWidth`, so the run
+                always spans exactly where the packet travels, at any
+                viewport width. The run/stubs now span the FULL 0..400
+                viewBox width (fix-round Nit 7) — previously 14..386, which
+                undershot the packet's own travel range (0..clientWidth,
+                the whole box) and let the packet overrun the trace's
+                corners at both leg extremes. `overflow: visible` (below)
+                lets the two arrow tips draw slightly outside the viewBox's
+                own 0..40 bounds without being clipped.
+              */}
+              <svg class="trace" viewBox="0 0 400 40" preserveAspectRatio="none" aria-hidden="true">
+                <path class="trace-run" d="M0,0 L0,20 L400,20 L400,40" vector-effect="non-scaling-stroke" />
+                {/*
+                  Two arrowheads, one per direction — the sanctioned JS
+                  exception (enhance.mjs) toggles `.return` on this SVG's
+                  `[data-beam]` ancestor exactly when the travelling packet's
+                  text flips from the outbound to the return wire string; the
+                  opacity swap below is pure CSS from that one class.
+                */}
+                <path class="trace-arrow arrow-out" d="M392,34 L400,44 L408,34" vector-effect="non-scaling-stroke" />
+                <path class="trace-arrow arrow-back" d="M-8,6 L0,-4 L8,6" vector-effect="non-scaling-stroke" />
+              </svg>
+              <span class="packet" data-packet></span>
+            </div>
+            <div data-pane-peer>
+              <Pane title="tmux:%3 — codex (peer)">
+                <pre tabindex="0" role="region" aria-label="tmux pane contents: the peer's side of the exchange, including the injected envelope"><span class="dim" data-peer-idle>{IDLE}</span>
+<span class="env" data-line data-text={ENV_HEAD}>{ENV_HEAD}</span><span class="envtail" data-line data-text={ENV_TAIL}>{ENV_TAIL}</span>
+<span data-line data-text={WORK1}>{WORK1}</span>
+<span data-line data-text={WORK2}>{WORK2}</span>
+<span data-line data-typed data-text={REPLY_CMD}>{REPLY_CMD}</span><span class="caret" data-caret aria-hidden="true">▊</span></pre>
+              </Pane>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    {/* source-line wrapping below is deliberate: a newline adjacent to a
+         tag edge collapses to zero-width, not a space, so every wrap point
+         is kept between two plain words instead of touching a <span> edge */}
+    <div class="copy" data-beat-copy>
+      <h2>A peer, in the pane next door</h2>
+      <p>
+        Whatever runs in another tmux pane — the Codex CLI, another Claude, a
+        plain shell — is addressable. You ask in plain words; <span class="k">channel_send</span> wraps
+        it into an envelope. <span class="k">The peer installs nothing.</span>
+      </p>
+    </div>
+    <div class="copy" data-beat-copy>
+      <h2>The notification is the message itself</h2>
+      <p>
+        cc-uplink injects <span class="k">one plaintext line</span> into the
+        peer's terminal — that line IS the notification. Its tail carries the
+        exact command to reply with: a correlation id and a <span class="k">tmux send-keys</span> back
+        to your pane.
+      </p>
+    </div>
+    <div class="copy" data-beat-copy>
+      <h2>The peer answers by running what it was handed</h2>
+      <p>
+        codex does the review, then runs the reply command verbatim. No SDK,
+        no webhook, no queue — <span class="k">the envelope was the protocol.</span>
+      </p>
+    </div>
+    <div class="copy" data-beat-copy>
+      <h2>The reply lands in your pane, not in a queue</h2>
+      <p>
+        The <span class="k">[reply id:…]</span> line arrives in your own
+        pane, correlation id matching the one you sent. <span class="k">channel_recv</span> stays
+        an audit log — nothing to poll, ever.
+      </p>
+    </div>
+  </div>
+</section>
+
+<style>
+  /*
+   * Flat by default (matches the storyboard's `body.flat` overrides
+   * unconditionally) — this is what a reduced-motion or narrow-viewport
+   * visitor gets, and it's the whole page for a no-JS visitor too, so it
+   * has to stand on its own as the complete experience. `.beam` and
+   * `.packet` below are pre-positioned to the storyboard's non-flat
+   * geometry but hidden via `display: none`; the enhanced-mode block at the
+   * bottom of this file only has to flip visibility on top of this layout,
+   * not rebuild it. See that block for how `.enhanced` (added to <html> by
+   * site/src/scripts/enhance.mjs, and ONLY by it, after its own gate
+   * passes) turns this into the pinned 460vh/4-beat scroll scrub.
+   */
+  .track { position: relative; }
+  .stage { padding: var(--space-xl) 0; }
+  .stage-inner {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0 var(--space-m);
+    display: flex;
+    justify-content: center;
+  }
+  .frame { width: min(640px, 92vw); position: relative; }
+  /*
+   * Fix-round Major 1: the middle row IS the trace's row — `.beam` is a
+   * real grid item placed there, not an absolutely-positioned overlay
+   * anchored to `.panes`' overall midpoint. That midpoint drifted onto
+   * the peer pane once its height diverged from the you-pane's during
+   * the scrub (the peer pane grows ~50px as its lines reveal); a
+   * dedicated 56px row is exactly the gap between the two panes' actual
+   * rendered edges at every frame, which no longer depends on the two
+   * panes staying the same height. `gap` is gone — the middle row
+   * supplies the spacing that used to come from it.
+   */
+  .panes { display: grid; grid-template-rows: auto 56px auto; position: relative; }
+  /*
+   * Second fix-round pass, same Major: explicit `grid-row` on every child
+   * is LOAD-BEARING, not decorative — relying on DOM order alone (this
+   * rule's first version) broke in flat mode specifically. `.beam` is
+   * `display: none` there (the default; see that rule further below),
+   * and a `display: none` element is never a grid item at all — CSS Grid
+   * treats it exactly as if it weren't in the markup. With only 2 of
+   * these 3 children actually participating, auto-placement packs them
+   * into the grid's FIRST two row tracks in DOM order: `[data-pane-you]`
+   * into row 1, `[data-pane-peer]` into row 2 — the 56px trace row, not
+   * row 3. That squeezed the peer pane's full height into a 56px cell
+   * and, because Pane.astro's own root is `position: relative` (so
+   * overflow isn't clipped by any ancestor), let its content visually
+   * spill ~370px down over the next beat-copy block. Pinning every
+   * child's row explicitly means placement can never again depend on how
+   * many of the three actually show up as grid items — true in flat
+   * mode (2 items), enhanced mode (3 items), and any future state.
+   */
+  [data-pane-you] { grid-row: 1; }
+  .beam { grid-row: 2; }
+  [data-pane-peer] { grid-row: 3; }
+  /*
+   * Same fix, same reason, as Hero.astro's `.copy { min-width: 0; }`
+   * comment (see that file): grid items default to `min-width: auto`,
+   * which floors their size at their content's min-content width. Each of
+   * these wraps a `<pre>` whose lines are individually unbreakable (the
+   * peer pane's envelope tail alone is ~90 characters of one span) — at a
+   * 320px viewport that min-content floor was wide enough to blow out the
+   * whole page's horizontal scroll (`[data-pane-you]` alone measured
+   * ~1289px). `.pane-body`/`pre`'s own `overflow-x: auto` (Pane.astro /
+   * below in this file) already turns that overflow into an internal
+   * scrollbar — but only once something stops it from propagating past
+   * THIS element first; without `min-width: 0` here, the grid track (and
+   * therefore the page) grows to fit the pre instead of the pre scrolling
+   * inside a track sized to `.frame`.
+   */
+  [data-pane-you], [data-pane-peer] { min-width: 0; }
+  /*
+   * `.fig-wrap` matches `.stage-inner`'s own max-width/padding formula (see
+   * above) so the FIG header's leader rule lines up with the frame below it
+   * rather than sitting flush against the viewport edge.
+   */
+  .fig-wrap {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: var(--space-l) var(--space-m) 0;
+  }
+  .beatmark {
+    font-family: var(--mono);
+    font-size: var(--step--1);
+    color: var(--ink-dim);
+    margin: 0 0 var(--space-s);
+    letter-spacing: 0.08em;
+  }
+  .beatmark b { color: var(--clay-ink); font-weight: 400; }
+
+  :global([data-pane-you] pre),
+  :global([data-pane-peer] pre) {
+    margin: 0;
+    overflow-x: auto;
+  }
+  /*
+   * Both `<pre tabindex="0" role="region">`s are real focusables sitting on
+   * the pane's instrument ground, not paper — tokens.css's global
+   * `:focus-visible` ring is --clay-ink, which measures only 2.93:1
+   * against --term, under the 3:1 non-text floor this same commit enforces
+   * everywhere else (StatusLine, the 404 pane link, the install-strip
+   * button). --amber matches that same pattern (9.58:1 on --term).
+   */
+  :global([data-pane-you] pre:focus-visible),
+  :global([data-pane-peer] pre:focus-visible) {
+    outline-color: var(--amber);
+  }
+  /*
+   * `.dim`/`.reply`/`.caret` all render INSIDE a Pane's `<pre>` (an
+   * instrument, warm-black CRT ground) — the paper-world ink-dim/clay-ink
+   * pair used elsewhere on this page would be nearly invisible there.
+   * `--term-dim` is the shared dim-instrument token (tokens.css has the
+   * full rationale/measurements); `--green`/`--amber` are the named
+   * instrument-world phosphor tokens, matching the style tile's `.rep`/
+   * `.caret` treatment exactly.
+   */
+  .dim { color: var(--term-dim); }
+  .reply { color: var(--green); }
+  .env { color: var(--signal); }
+  /*
+   * 80% of --signal against --term (the peer pane's own ground — an
+   * instrument-body colour, not paper): 5.60:1 plain, ~5.20:1 against the
+   * scanline's stripe-average ground (Pane.astro's ::after comment has
+   * the stripe math) — both comfortably clear the 4.5:1 AA floor this
+   * content needs (it's the reply instructions). The previous 67% mix
+   * read 4.32:1 plain / ~4.04:1 stripe-average — actually AA-failing on
+   * the measure that governs what a reader sees through the scanlines,
+   * despite an earlier version of this comment claiming 67% cleared AA
+   * (it never did, once the pane ground lightened out from under that
+   * number during the reskin).
+   */
+  .envtail { color: color-mix(in srgb, var(--signal) 80%, transparent); }
+
+  /* Caret hooks for the two scroll-typed lines in this section — inert by
+     default; the static/flat page already shows each line's full text, so
+     no blinking cursor is needed there. enhance.mjs flips these visible
+     (see the `.enhanced` block below) only once it's driving the typing
+     itself. */
+  [data-caret] { display: none; }
+  .caret { color: var(--amber); }
+
+  /* Standard visually-hidden-but-screen-reader-visible clip — present
+     unconditionally (see the <p class="sr-only"> above the track). */
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  /*
+   * The signal beam is now a schematic trace (ref-2-frame-exchange.png),
+   * not a neon gradient bar — see the SVG markup above. As a grid item
+   * (see `.panes`'s own comment for why), `.beam`'s height comes for free
+   * from its 56px row track; `width: 84%; margin: 0 auto` reproduces the
+   * old `left: 8%; right: 8%` inset (100% − 8% − 8% = 84%, centred) within
+   * whatever the track's own width is — same effective width `initJourney`'s
+   * packet math reads via `clientWidth` (site/src/scripts/enhance.mjs), so
+   * the SVG's `preserveAspectRatio="none"` run still stretches to fill
+   * exactly the box the packet travels across, at any viewport size.
+   * `position: relative` (not `absolute` — this is a normal grid item now)
+   * is what the child `.trace`'s `position: absolute; inset: 0` anchors to.
+   */
+  .beam {
+    display: none;
+    position: relative;
+    width: 84%;
+    height: 100%;
+    margin: 0 auto;
+    pointer-events: none;
+  }
+  .trace {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+  }
+  .trace-run {
+    fill: none;
+    stroke: var(--signal);
+    stroke-width: 1.6;
+    stroke-dasharray: 6 4;
+    filter: drop-shadow(0 0 3px var(--signal));
+  }
+  .trace-arrow {
+    fill: none;
+    stroke: var(--signal);
+    stroke-width: 1.6;
+    filter: drop-shadow(0 0 3px var(--signal));
+    transition: opacity 0.2s;
+  }
+  /* Outbound (the markup's default, no JS needed): arrow enters the peer
+     pane at the bottom-right stub. `.return` (toggled by enhance.mjs — see
+     that file's own comment on this exact class) swaps which end lights
+     up, so the reply leg's arrow instead enters the you-pane at the
+     top-left stub — the sanctioned one-class JS hook this task allows. */
+  .arrow-back { opacity: 0; }
+  [data-beam].return .arrow-out { opacity: 0; }
+  [data-beam].return .arrow-back { opacity: 1; }
+  .packet {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    white-space: nowrap;
+    font-family: var(--mono);
+    font-size: var(--step--1);
+    color: var(--signal);
+    background: var(--term);
+    border: 1px solid color-mix(in srgb, var(--signal) 55%, transparent);
+    border-radius: 3px;
+    padding: 3px 9px;
+    box-shadow: 0 0 12px color-mix(in srgb, var(--signal) 25%, transparent);
+  }
+
+  .copy {
+    max-width: 52ch;
+    margin: 0 auto;
+    padding: var(--space-l) var(--space-m) var(--space-s);
+  }
+  .copy h2 { font-size: var(--step-2); line-height: 1.2; margin: 0 0 var(--space-m); }
+  .copy p { color: var(--ink-dim); }
+  /* Manilla inline-code chip — matches Doc.astro's `:not(pre) > code`
+     treatment exactly (design spec's Tokens section: "--manilla ...
+     inline-code fill, tags"), so prose code styling reads the same whether
+     it's markdown-rendered docs or hand-authored landing copy. */
+  .copy .k {
+    font-family: var(--mono);
+    font-size: 0.92em;
+    color: var(--ink);
+    background: var(--manilla);
+    padding: 0.1em 0.35em;
+    border-radius: 3px;
+  }
+
+  /*
+   * ── Enhanced mode: the pinned scroll scrub ─────────────────────────
+   * Everything below hangs off `.enhanced` on <html>, which only
+   * site/src/scripts/enhance.mjs adds, and only after its own gate
+   * (reduced-motion / narrow viewport) passes. That ordering is the whole
+   * point: this block can never apply before JS has decided the visitor
+   * gets the pinned scene, so a flat visitor never sees a flash of hidden
+   * text or a pinned layout it doesn't get to unpin.
+   *
+   * `:global()` wraps only `.enhanced` in every rule below — Astro still
+   * scopes the rest of each selector to THIS component (Journey.astro), by
+   * appending Journey's own scope attribute to it. That's fine for
+   * `[data-track]`, `[data-beat-copy]`, `[data-line]`, `[data-pane-you]`
+   * and everything else here: they're all authored directly in this
+   * file's template (slotted children of <Pane> count as authored here
+   * too), so they genuinely carry Journey's scope attribute and the
+   * selectors match. It is NOT fine for `[data-pane]` itself — that
+   * element's opening tag is authored in Pane.astro, so it carries PANE's
+   * scope attribute instead, and a Journey-scoped selector targeting
+   * `[data-pane]` directly can never match, `:global(.enhanced)` prefix or
+   * not (this bit a real rule below once: seemed to compile fine, silently
+   * never applied at runtime). Where pane-level styling is needed, it goes
+   * on a wrapper THIS component owns ([data-pane-you]/[data-pane-peer])
+   * instead of reaching into Pane's own root element.
+   */
+  :global(.enhanced) [data-track] {
+    height: 460vh;
+  }
+  :global(.enhanced) [data-stage] {
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    overflow: hidden;
+  }
+  :global(.enhanced) [data-journey] .stage-inner {
+    justify-content: end;
+    align-items: center;
+    height: 100%;
+    padding: 0;
+  }
+  :global(.enhanced) [data-journey] .frame {
+    width: min(640px, 54vw);
+  }
+  :global(.enhanced) [data-beam] {
+    display: block;
+    opacity: 0;
+    transition: opacity 0.3s;
+  }
+
+  /*
+   * Left-column beat copy, absolutely positioned over the pinned stage as
+   * the track scrolls underneath it — same left-edge formula as
+   * `.stage-inner`'s own max-width/padding (1200px / --space-m), just
+   * inverted from "center the wrap" to "start the wrap's left edge".
+   * `.track` is `position: relative` unconditionally above, so these
+   * percentage `top` values resolve against the 460vh track, not the
+   * viewport. The four blocks are told apart purely by DOM order — `>`
+   * anchored to `[data-track]` so nth-child counts `.stage` as child 1 and
+   * the four `[data-beat-copy]` blocks as children 2–5 — rather than by
+   * adding index attributes the landing-page markup tests don't expect.
+   */
+  :global(.enhanced) [data-journey] [data-beat-copy] {
+    position: absolute;
+    z-index: 6;
+    width: min(36ch, 32vw);
+    left: max(calc((100vw - 1200px) / 2 + var(--space-m)), var(--space-m));
+  }
+  :global(.enhanced) [data-track] > [data-beat-copy]:nth-child(2) { top: 6%; }
+  :global(.enhanced) [data-track] > [data-beat-copy]:nth-child(3) { top: 31%; }
+  :global(.enhanced) [data-track] > [data-beat-copy]:nth-child(4) { top: 56%; }
+  :global(.enhanced) [data-track] > [data-beat-copy]:nth-child(5) { top: 80%; }
+
+  /*
+   * Animated lines start hidden and fade in via `.on` (added/removed by
+   * enhance.mjs's scrub). The two typewriter targets ([data-typed]) are
+   * exempt from this opacity regime — the script empties their textContent
+   * instead of fading them, so a scrub reversal shrinks the typed text
+   * back down rather than also replaying a fade.
+   */
+  :global(.enhanced) [data-journey] [data-line]:not([data-typed]) {
+    opacity: 0;
+    transition: opacity 0.3s;
+  }
+  :global(.enhanced) [data-journey] [data-line]:not([data-typed]).on {
+    opacity: 1;
+  }
+  :global(.enhanced) [data-journey] [data-caret] {
+    display: inline-block;
+  }
+
+  /*
+   * Pane focus: the peer pane's `active` state reuses Pane.astro's own
+   * `[data-active]` attribute selector (no new CSS needed for that half —
+   * enhance.mjs just flips the attribute on the element Pane.astro already
+   * scoped). journeyState.mjs sets `youActive = !peerActive && ...`, so
+   * the you-pane's own `[data-active]` already drops to 'false' — plain
+   * `--term-line` border, no amber glow — at exactly the moment `.faded`
+   * (below) turns on; border-color/glow de-emphasis is therefore already
+   * handled by that pre-existing mechanism and needs no new rule here
+   * (and couldn't get one directly even if it did: a selector here can't
+   * reach into Pane.astro's own element at all — see the comment above
+   * the enhanced block for why).
+   *
+   * `.faded` itself used to be `opacity: 0.55` — destructive: opacity
+   * blends the WHOLE element (border and every phosphor text colour
+   * inside it) against whatever is behind it, which on this paper page is
+   * #F5F2E9, not another dark surface. At 55% that wash crushed every
+   * instrument text colour's contrast against the faded pane's own
+   * (also-washed) ground — the exact pairing palette-contrast.test.mjs's
+   * AA gate measures — because blending toward paper moves both the text
+   * and the ground toward the same light colour, collapsing their ratio.
+   * `filter` doesn't have that problem: grayscale()/brightness() transform
+   * the element's own rendered pixels in place, at full opacity, with
+   * nothing of the page behind it showing through — so the pane's
+   * internal text-vs-ground contrast survives de-emphasis far better than
+   * opacity-over-paper ever could. Tuned (computed, not eyeballed) so
+   * every pane text colour the you-pane actually uses stays >=4.5:1
+   * against the faded ground: body #F2E7CF 11.77:1, --term-dim 4.93:1,
+   * --green (reply) 8.77:1 (unfaded baseline: 13.70 / 5.64 / 10.36 —
+   * de-emphasised, still comfortably AA).
+   */
+  :global(.enhanced) [data-journey] [data-pane-you] {
+    transition: filter 0.3s;
+  }
+  :global(.enhanced) [data-journey] [data-pane-you].faded {
+    filter: grayscale(0.25) brightness(0.92);
+  }
+</style>

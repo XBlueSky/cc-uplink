@@ -1,12 +1,13 @@
 ---
 import Base from '../layouts/Base.astro'
 import StatusLine from '../components/StatusLine.astro'
-import Act0 from '../components/acts/Act0.astro'
-import Act1 from '../components/acts/Act1.astro'
-import Act2 from '../components/acts/Act2.astro'
-import Act3 from '../components/acts/Act3.astro'
-import Act4 from '../components/acts/Act4.astro'
-import Act5 from '../components/acts/Act5.astro'
+import Rail from '../components/Rail.astro'
+import Hero from '../components/sections/Hero.astro'
+import Journey from '../components/sections/Journey.astro'
+import InvokeDemo from '../components/sections/InvokeDemo.astro'
+import ToolsGrid from '../components/sections/ToolsGrid.astro'
+import DocsCards from '../components/sections/DocsCards.astro'
+import FooterCta from '../components/sections/FooterCta.astro'
 
 import manifestJson from '../data/manifest.json'
 import { parseManifest } from '../lib/manifest.mjs'
@@ -24,14 +25,11 @@ import { fetchLatestRelease, resolveRelease } from '../lib/release.mjs'
 // the exactly-six-tools check — so a bad manifest fails the build loudly.
 const manifest = parseManifest(manifestJson)
 
-const trap = manifest.traps[0] ?? ''
-const tip = manifest.tips[1] ?? manifest.tips[0] ?? ''
-
-// Act0's install command must name this repo, not a hardcoded slug — derive
+// Hero's install command must name this repo, not a hardcoded slug — derive
 // it from the manifest's own `repository` URL so a rename breaks the build
 // instead of shipping a dead `/plugin marketplace add` command. `repository`
-// is `string | null` and not a required manifest field, so guard it like the
-// trap/tip lines above rather than assume it is always present.
+// is `string | null` and not a required manifest field, so guard it with
+// `?? ''` rather than assume it is always present.
 const repoSlug = (manifest.repository ?? '')
   .replace(/^https?:\/\/github\.com\//, '')
   .replace(/\.git$/, '')
@@ -41,7 +39,7 @@ const repoSlug = (manifest.repository ?? '')
 // each default to a hardcoded `XBlueSky/cc-uplink`, which existed only because
 // nothing here used to pass a `repo` argument. A repo rename would otherwise
 // keep hitting the old GitHub API path (and therefore the old fallback URL)
-// even after Act0's own install command had already picked up the rename —
+// even after Hero's own install command had already picked up the rename —
 // two facts on one page quietly disagreeing. `repoSlug || undefined` keeps
 // each function's own default live when the manifest has no repository at
 // all, rather than handing them an empty string.
@@ -60,18 +58,100 @@ if (!fetchedRelease) {
 const release = resolveRelease(fetchedRelease, manifest.version, repoSlug || undefined)
 ---
 <Base title={`cc-uplink — ${manifest.tagline}`} description={manifest.description}>
+  <!--
+    Pre-paint enhancement gate. Lives HERE (index.astro), not in Base.astro —
+    Base is shared with 404/docs pages whose own tests require exactly zero
+    scripts, so a gate that every page paid for would break those.
+
+    Deliberately a parser-blocking classic script (`is:inline` — no `src`,
+    no `type="module"`, no `defer`/`async`): the HTML parser executes it
+    the instant it's reached, synchronously, before the parser continues
+    past this point — including before it reaches `[data-page]` below, and
+    therefore before first paint. `<script>` (module, whether inlined by
+    Astro or chunked externally — see enhance.mjs) is deferred either way,
+    which is exactly the bug this replaces: a deep link straight to
+    `/#journey` used to paint the flat/static transcript first, then flash
+    to the pinned/hidden-lines layout once the module script finally ran.
+    This is the ONE evaluation site for the flat/enhanced decision now —
+    enhance.mjs no longer re-derives it, it only reads the class back (see
+    that file's own gate comment).
+
+    Two classes get stamped here, independently of each other:
+      - `enhanced`: motion is allowed (not reduced-motion, and a viewport
+        wide enough for the pinned §2/§3 scrubs). Gates every motion-bearing
+        rule in the section components.
+      - `has-clipboard`: `navigator.clipboard` exists. Gates the copy
+        buttons' `display` (see Hero.astro/FooterCta.astro) — not motion, so
+        checked unconditionally rather than folded into the `enhanced` gate.
+
+    Both are stamped OPTIMISTICALLY, before any JS has actually run past
+    this point — `enhanced` in particular used to double as a promise that
+    enhance.mjs's module would go on to wire the scrubs/reveals it gates the
+    CSS for. A chunk that 404s, gets blocked, or fails to parse in an old
+    browser breaks that promise silently: the class stays, the CSS keeps
+    hiding `[data-line]`/`[data-art]`/etc., and nothing is left alive to
+    ever add `.on`/`.scrubbing` back — sections pin themselves shut with no
+    remaining path to recover.
+
+    The `load` listener below is the self-heal for exactly that failure.
+    enhance.mjs's `initEnhance()` sets `<html>`'s `enhanceReady` dataset flag
+    as the very first statement of BOTH sides of its own flat/enhanced split
+    (see that file) — proof the module actually ran, regardless of which
+    side a given visitor landed on, not just that this script optimistically
+    guessed it would. Setting it on the flat side too matters just as much
+    as the enhanced side: a flat visitor's copy button is already wired by
+    the time that split happens, and the heal must not strip `has-clipboard`
+    out from under an already-working button just because that visitor never
+    qualified for `enhanced` in the first place. A `<script type="module">`
+    (deferred, whether Astro inlines it or chunks it externally) always
+    finishes running before `load` fires, so on a healthy page — flat or
+    enhanced — `enhanceReady` is already set by the time this listener
+    checks it and the heal is a no-op. If the module never ran at all, it
+    never is, and
+    `load` strips both classes back off — the CSS gated on them stops
+    applying and the page renders the complete flat experience instead of
+    staying pinned half-hidden forever.
+  -->
+  <script is:inline>
+    if (!matchMedia('(prefers-reduced-motion: reduce)').matches && innerWidth >= 760)
+      document.documentElement.classList.add('enhanced')
+    if (navigator.clipboard) document.documentElement.classList.add('has-clipboard')
+    addEventListener('load', () => {
+      var h = document.documentElement
+      if (!h.dataset.enhanceReady) {
+        h.classList.remove('enhanced')
+        h.classList.remove('has-clipboard')
+      }
+    })
+  </script>
   <StatusLine current="home" />
-  <Act0
-    tagline={manifest.tagline}
-    intro={manifest.intro}
-    release={release}
-    repo={repoSlug}
-    pluginName={manifest.name}
-    marketplaceName={manifest.marketplace}
-  />
-  <Act1 />
-  <Act2 />
-  <Act3 trap={trap} />
-  <Act4 tip={tip} />
-  <Act5 tools={manifest.tools} />
+  <Rail />
+  <div data-page>
+    <Hero
+      tagline={manifest.tagline}
+      intro={manifest.intro}
+      release={release}
+      repo={repoSlug}
+      pluginName={manifest.name}
+      marketplaceName={manifest.marketplace}
+    />
+    <Journey />
+    <InvokeDemo />
+    <ToolsGrid tools={manifest.tools} />
+    <DocsCards />
+    <FooterCta
+      release={release}
+      repo={repoSlug}
+      pluginName={manifest.name}
+      marketplaceName={manifest.marketplace}
+    />
+  </div>
+
+  <!-- The one behaviour module: it self-runs on import and, only after
+       reading the `enhanced` class the gate script above already stamped
+       onto <html> pre-paint, wires the §2/§3 scrubs and everything else
+       past that gate. See enhance.mjs's own top-of-file comment. -->
+  <script>
+    import '../scripts/enhance.mjs'
+  </script>
 </Base>

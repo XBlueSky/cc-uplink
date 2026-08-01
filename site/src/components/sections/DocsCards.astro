@@ -1,0 +1,143 @@
+---
+import FigHeader from '../FigHeader.astro'
+
+// One factual, English sentence per doc page — written fresh for this
+// redesign (the storyboard's own hooks are Traditional Chinese and are
+// explicitly storyboard-only teaching aids, not shippable copy).
+const cards = [
+  {
+    href: '/docs/wire-contract/',
+    title: 'wire-contract',
+    hook: 'The Driver trait and its DTOs — the shapes a future out-of-process driver protocol has to match.',
+  },
+  {
+    href: '/docs/security/',
+    title: 'security',
+    hook: 'Argv-only dispatch, env-only secrets, and why injected envelopes are visible plaintext by design.',
+  },
+  {
+    href: '/docs/cli/',
+    title: 'cli',
+    hook: 'Every channel op from a shell — doctor, send, invoke, log — no LLM required.',
+  },
+  {
+    href: '/docs/configuration/',
+    title: 'configuration',
+    hook: "The full channels.toml surface — every driver's optional settings in one file.",
+  },
+  {
+    href: '/docs/downstream-contracts/',
+    title: 'downstream-contracts',
+    hook: 'The external APIs each driver actually speaks to, and the boundary driver authors must not cross.',
+  },
+]
+---
+<section class="docs-sec" id="docs" aria-labelledby="docs-heading">
+  <div>
+    <FigHeader n={5} title="DOCS" />
+    <div class="intro" data-reveal>
+      <h2 id="docs-heading">Read the contracts</h2>
+      <p class="body">The parts most tools hide are the parts this one documents.</p>
+    </div>
+    <div class="cards">
+      {cards.map((card) => (
+        <a class="card" data-reveal href={card.href}>
+          <b>{card.title}</b>
+          <span>{card.hook}</span>
+        </a>
+      ))}
+    </div>
+  </div>
+</section>
+
+<style>
+  .docs-sec {
+    padding: var(--space-xl) var(--space-m);
+    max-width: 1200px;
+    margin: 0 auto;
+    text-align: center;
+  }
+  h2 { font-size: var(--step-2); line-height: 1.1; margin: 0 0 var(--space-m); }
+  .body { color: var(--ink-dim); max-width: 52ch; margin: 0 auto; }
+  .cards {
+    margin-top: var(--space-l);
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+    gap: var(--space-s);
+    text-align: left;
+  }
+  /*
+   * Paper cards (design spec §5/DocsCards): leader-bordered, a faint
+   * white-ish fill on the paper-grid ground — same fill recipe as
+   * ToolsGrid.astro's own `.chip`, so the two "component" surfaces on this
+   * page read as one family. Hover swaps to a clay border + a soft
+   * clay-tinted shadow, the paper world's equivalent of Pane.astro's own
+   * active-state amber glow.
+   */
+  .card {
+    display: block;
+    border: 1px solid var(--leader);
+    padding: var(--space-m);
+    background: var(--paper-veil);
+    text-decoration: none;
+    transition: border-color 0.25s, box-shadow 0.25s;
+  }
+  .card:hover {
+    border-color: var(--clay);
+    box-shadow: 0 2px 12px color-mix(in srgb, var(--clay) 18%, transparent);
+  }
+  /*
+   * Focus gets its own visible ring rather than riding this same rule —
+   * the combined `:hover, :focus-visible` selector this replaced also set
+   * `outline: none`, which suppressed keyboard focus entirely (a
+   * border-colour swap alone, without the ring, doesn't read as a focus
+   * indicator). Matches tokens.css's global default value-for-value
+   * (--clay-ink outline, 2px, offset 2px — 5.12:1 against the paper the
+   * ring draws over just outside the card) — kept explicit here, not left
+   * to inherit it, so this stays correct even if the global default ever
+   * changes.
+   */
+  .card:focus-visible {
+    outline: 2px solid var(--clay-ink);
+    outline-offset: 2px;
+  }
+  .card b {
+    display: block;
+    font-family: var(--mono);
+    font-size: var(--step--1);
+    color: var(--clay-ink);
+    font-weight: 500;
+  }
+  .card span {
+    display: block;
+    margin-top: var(--space-s);
+    font-size: var(--step--1);
+    color: var(--ink-dim);
+    line-height: 1.5;
+  }
+
+  /*
+   * ── Enhanced mode: one-time reveal ─────────────────────────────────
+   * Same rule/rationale as ToolsGrid.astro's own enhanced block — see
+   * there for why this hangs off `.enhanced` and why the stagger below is
+   * `:nth-child`, not an inline `transition-delay` per card.
+   */
+  :global(.enhanced) [data-reveal] {
+    opacity: 0;
+    translate: 0 26px;
+    transition: opacity 0.7s ease, translate 0.7s ease;
+  }
+  :global(.enhanced) [data-reveal].in {
+    opacity: 1;
+    translate: none;
+  }
+  /* Same specificity note as ToolsGrid.astro: these `:nth-child` rules only
+     beat the `[data-reveal]` shorthand above on specificity
+     (`.enhanced .cards .card:nth-child(n)` > `.enhanced [data-reveal]`) —
+     simplifying this selector can silently zero out the stagger. */
+  :global(.enhanced) .cards .card:nth-child(1) { transition-delay: 0s; }
+  :global(.enhanced) .cards .card:nth-child(2) { transition-delay: 0.06s; }
+  :global(.enhanced) .cards .card:nth-child(3) { transition-delay: 0.12s; }
+  :global(.enhanced) .cards .card:nth-child(4) { transition-delay: 0.18s; }
+  :global(.enhanced) .cards .card:nth-child(5) { transition-delay: 0.24s; }
+</style>

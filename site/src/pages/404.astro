@@ -1,0 +1,68 @@
+---
+import Base from '../layouts/Base.astro'
+import StatusLine from '../components/StatusLine.astro'
+import Pane from '../components/Pane.astro'
+---
+
+{/* Without this file Cloudflare Pages assumes the site is an SPA and rewrites
+     every unknown path to /index.html with HTTP 200. Shipping dist/404.html is
+     what makes Pages answer misses with a real 404 status; dist-guard.test.mjs
+     asserts it exists so the SPA fallback can never quietly come back. */}
+<Base
+  title="404 — cc-uplink"
+  description="No such pane. The path you followed does not exist on this session."
+>
+  <StatusLine />
+  <div class="wrap">
+    {/* Paper page, instrument Pane: the headline lives out here on paper
+         (serif, per Base.astro's global h1/h2 rule) — an <h1> inside the
+         Pane below would still pick up that global rule (it isn't scoped
+         to outside-the-pane content) and read wrong, since instrument text
+         is mono everywhere else on this site. */}
+    <p class="tag">404</p>
+    <h1>No such pane</h1>
+    <Pane title="tmux — find-window" active={true}>
+      <p><span class="err">404</span> no such pane</p>
+      <p class="dim">the path you followed doesn't exist in this session.</p>
+      <p><a href="/">switch to window 0:home</a></p>
+    </Pane>
+  </div>
+</Base>
+
+<style>
+  .wrap {
+    min-height: 70svh;
+    display: grid;
+    justify-items: center;
+    align-content: center;
+    gap: var(--space-m);
+    padding: var(--space-xl) var(--space-m);
+  }
+  .tag {
+    margin: 0;
+    font-family: var(--mono);
+    font-size: var(--step--1);
+    letter-spacing: 0.14em;
+    color: var(--clay-ink);
+  }
+  h1 { margin: 0; }
+  /*
+   * Everything below is slotted INTO the Pane (its default slot renders
+   * inside .pane-body, an instrument surface) — amber is light in
+   * instruments, never clay (tokens.css's Role rule). This is this task's
+   * carried Task-1-review finding: these were the old link-accent alias,
+   * which retired entirely per the design spec. `--term-dim` is the same
+   * shared dim-instrument token Pane.astro/StatusLine.astro use for their
+   * own chrome text (see tokens.css's comment on that token).
+   *
+   * `a`'s own `:focus-visible` override is needed too: this link sits on
+   * the pane's instrument ground, and tokens.css's global ring colour is
+   * now --clay-ink — 2.93:1 against --term, under the 3:1 non-text floor.
+   * --amber (already this link's text colour) clears it comfortably
+   * (9.58:1).
+   */
+  .err { color: var(--amber); }
+  .dim { color: var(--term-dim); }
+  a { color: var(--amber); }
+  a:focus-visible { outline-color: var(--amber); }
+</style>

@@ -1,0 +1,227 @@
+---
+import Pane from '../Pane.astro'
+import FigHeader from '../FigHeader.astro'
+
+const { tagline, intro, release, repo, pluginName, marketplaceName } = Astro.props
+// `plugin@marketplace`'s second half names the marketplace entry, which is
+// not necessarily the plugin's own name — `parseManifest` reads it from the
+// manifest's top-level `marketplace.name`. Falls back to `pluginName` only if
+// the manifest ever omits it (same nullable-field guard as `repo` below), so
+// a missing marketplace name degrades to today's behaviour instead of
+// rendering a literal `undefined`.
+const marketplaceSlug = marketplaceName ?? pluginName
+---
+<section class="hero" id="hero" aria-labelledby="hero-heading">
+  <FigHeader n={1} title="HERO" />
+  <div class="wrap">
+    <div class="copy">
+      <h1 id="hero-heading">{tagline}</h1>
+      <p class="sub">{intro}</p>
+      <div class="install">
+        <pre><code>/plugin marketplace add {repo}
+/plugin install {pluginName}@{marketplaceSlug}</code></pre>
+        <button type="button" data-copy>copy</button>
+      </div>
+      <p class="meta">
+        <a href={release.url}>{release.tag}</a> · one static Rust binary · MIT
+      </p>
+    </div>
+    <div class="pane-wrap">
+      <Pane title="tmux:%1 — claude" active={true}>
+        <pre>$ claude
+<span data-hero-line></span><span class="caret" aria-hidden="true"></span></pre>
+      </Pane>
+      {/*
+        ref-1-style dashed-leader callout — the ONE annotation the design
+        spec calls for on this section, carrying real information (it's the
+        product's actual claim, not decoration). aria-hidden: the same fact
+        is already in `intro` above, which a screen reader visitor gets as
+        plain prose; hidden below 760px, same breakpoint style-tile's own
+        `.callout` uses, because a stacked single-column layout there leaves
+        no safe margin to float it in without overlapping real content.
+      */}
+      <p class="callout" aria-hidden="true">fig. 1a — the peer installs nothing</p>
+    </div>
+  </div>
+  <p class="cue" aria-hidden="true">▼ scroll</p>
+</section>
+
+<style>
+  .hero {
+    min-height: 100svh;
+    display: grid;
+    align-content: center;
+    position: relative;
+    padding: var(--space-xl) var(--space-m);
+    max-width: 1200px;
+    margin: 0 auto;
+  }
+  .wrap {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: var(--space-l);
+    align-items: center;
+  }
+  @media (min-width: 900px) { .wrap { grid-template-columns: 1.15fr 0.85fr; } }
+  /*
+   * Grid items default to `min-width: auto`, which floors their size at
+   * their content's min-content width. The install `<pre>` below contains an
+   * unbreakable command line; without this, its min-content forces the
+   * shared grid column (and the page) wider than the viewport even though
+   * the `<pre>` itself has `overflow-x: auto` — that only stops *its own*
+   * automatic-minimum-size contribution, not its ancestor `.copy`'s.
+   */
+  .copy { min-width: 0; }
+  /*
+   * Instrument Serif at its only available weight (400) reads visibly
+   * lighter than the bold sans this replaced — browser-checked at 1440 and
+   * 390: --step-3 alone looked thin next to the sub/install block at both
+   * widths, so tokens.css's --h1-size bumps it ~12% over --step-3 (that
+   * token's own comment has the full rationale). This is its only
+   * consumer.
+   */
+  h1 {
+    font-size: var(--h1-size);
+    line-height: 1.05;
+    margin: 0 0 var(--space-m);
+    letter-spacing: -0.01em;
+  }
+  .sub { color: var(--ink-dim); max-width: 46ch; font-size: var(--step-1); line-height: 1.5; }
+  /*
+   * The install block is a dark instrument strip embedded in the paper page
+   * (design spec §2/Hero: "term bg, amber code text") — same ground/border
+   * recipe as a Pane, but flat chrome rather than a full CRT (no
+   * scanlines/glow of its own).
+   */
+  .install {
+    margin-top: var(--space-l);
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-s);
+    flex-wrap: wrap;
+    padding: var(--space-m);
+    background: var(--term);
+    border: 1px solid var(--term-line);
+  }
+  .install pre {
+    margin: 0;
+    font-family: var(--mono);
+    font-size: var(--step--1);
+    color: var(--amber);
+    overflow-x: auto;
+  }
+  /*
+   * Clay button, ink label — the ONE sanctioned clay-on-instrument use on
+   * this page (tokens.css's Role rule carries the same exception note):
+   * the install strip's CTA is a paper-world control docked into the
+   * instrument strip, not instrument chrome itself, so it keeps the
+   * paper-world clay/ink pairing rather than switching to amber-on-term.
+   * Ink-on-clay measures 5.40:1, comfortably AA.
+   */
+  .install button {
+    flex: none;
+    font-family: var(--mono);
+    font-size: var(--step--1);
+    color: var(--ink);
+    background: var(--clay);
+    border: none;
+    padding: 0.25rem var(--space-s);
+    cursor: pointer;
+    transition: opacity 0.2s;
+  }
+  .install button:hover {
+    opacity: 0.85;
+  }
+  /*
+   * Focus ring: --ink, inset (a negative offset draws it INSIDE the clay
+   * fill instead of out in the term strip's gap around the button). The
+   * button's own ground is clay, not the surrounding --term strip, so the
+   * ring has to clear 3:1 against clay, not against term — --amber (the
+   * strip's instrument ring colour everywhere else) measures only 1.78:1
+   * there; --ink matches the button's own ink-on-clay pairing, 5.40:1.
+   */
+  .install button:focus-visible {
+    outline: 2px solid var(--ink);
+    outline-offset: -4px;
+  }
+  /*
+   * Paint-stable copy button: hidden by CSS, not the `hidden` HTML
+   * attribute — a no-JS visitor gets no `has-clipboard` class (the gate
+   * script in index.astro never runs for them at all) so this rule still
+   * applies and the button still never shows for them. A JS visitor with
+   * Clipboard support gets `has-clipboard` on `<html>` pre-paint, in the
+   * SAME parser-blocking script that decides `enhanced` — so the button is
+   * already `display: inline-block` at first paint, before enhance.mjs has
+   * even started, and wiring the click handler later (initCopyButtons)
+   * causes zero layout shift. This replaces a `hidden` attribute + JS
+   * `button.hidden = false` toggle, which painted the button hidden first
+   * and un-hid it once the module ran — a 37.5px CLS at narrow viewports.
+   */
+  [data-copy] { display: none; }
+  :global(.has-clipboard) [data-copy] { display: inline-block; }
+  .meta {
+    margin-top: var(--space-s);
+    font-family: var(--mono);
+    font-size: var(--step--1);
+    color: var(--ink-dim);
+  }
+  .meta a { color: var(--clay-ink); }
+  .meta a:hover { color: var(--ink); }
+  .pane-wrap { position: relative; }
+  .caret {
+    display: inline-block;
+    width: 0.55em;
+    height: 1.15em;
+    background: var(--amber);
+    box-shadow: 0 0 8px rgba(255, 156, 27, .8);
+    vertical-align: text-bottom;
+    animation: blink 1.1s step-end infinite;
+  }
+  @keyframes blink { 50% { opacity: 0; } }
+  /*
+   * Dashed-leader callout, ref-1's own annotation shape: a short dashed
+   * stub leading into a mono label, floated over the pane's top-right
+   * corner. `right`/`top` are tuned so it clears the pane header at both
+   * grid breakpoints without needing separate positioning per breakpoint —
+   * verified in browser at 900/1200/1440.
+   */
+  .callout {
+    position: absolute;
+    right: 4px;
+    top: -30px;
+    margin: 0;
+    padding-left: 34px;
+    font-family: var(--mono);
+    font-size: var(--step--1);
+    color: var(--clay-ink);
+    white-space: nowrap;
+  }
+  .callout::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 50%;
+    width: 28px;
+    height: 1px;
+    background: repeating-linear-gradient(90deg, var(--leader) 0 4px, transparent 4px 7px);
+  }
+  .cue {
+    text-align: center;
+    margin: var(--space-xl) 0 0;
+    font-family: var(--mono);
+    font-size: var(--step--1);
+    color: var(--ink-dim);
+    animation: bob 2.2s ease-in-out infinite;
+  }
+  @keyframes bob { 50% { transform: translateY(7px); } }
+
+  @media (prefers-reduced-motion: reduce) {
+    .caret { animation: none; }
+    .cue { animation: none; }
+  }
+
+  @media (max-width: 760px) {
+    .wrap { grid-template-columns: 1fr; gap: var(--space-l); }
+    .callout { display: none; }
+  }
+</style>
