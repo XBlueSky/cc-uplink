@@ -270,6 +270,7 @@ impl TmuxDriver {
     }
 
     async fn op_read(&self, pane: &str, lines: u32) -> Result<serde_json::Value, DriverError> {
+        self.check_read(pane).await?;
         let out = self
             .run(&[
                 "capture-pane".into(),
@@ -314,6 +315,26 @@ impl TmuxDriver {
         let cfg = self.policy.current();
         policy::require(policy::effective_tier(&marks, &cfg), needed, what)?;
         Ok(marks)
+    }
+
+    /// Content gate: ops that return pane content (read, ask) are Forbidden on
+    /// read-blocked panes — at every tier.
+    async fn check_read(&self, pane: &str) -> Result<PaneMarks, DriverError> {
+        let marks = self.pane_marks(pane).await?;
+        let cfg = self.policy.current();
+        match policy::read_block(&marks, &cfg) {
+            None => Ok(marks),
+            Some(policy::ReadBlock::PaneOption) => Err(DriverError::new(
+                ErrorKind::Rejected,
+                "pane is read-blocked (@uplink_read off)",
+            )
+            .with_hint("a human can lift it: `tmux set -pu @uplink_read` on that pane")),
+            Some(policy::ReadBlock::ConfigGlob(g)) => Err(DriverError::new(
+                ErrorKind::Rejected,
+                format!("pane is read-blocked by config read_deny glob '{g}'"),
+            )
+            .with_hint("edit read_deny in config.toml (hot-reloaded)")),
+        }
     }
 
     async fn target_session(&self, pane: &str) -> Result<String, DriverError> {
@@ -529,6 +550,7 @@ impl TmuxDriver {
             .and_then(|v| v.as_u64())
             .unwrap_or(120_000);
 
+        self.check_read(pane).await?;
         let h0 = self.history_size(pane).await?;
         // No reply hint: `ask` captures the peer's transcript itself, so asking
         // it to send the answer back is pure overhead — and against a TUI peer
@@ -754,6 +776,20 @@ impl Driver for TmuxDriver {
                     .get("name")
                     .and_then(|v| v.as_str())
                     .ok_or_else(|| DriverError::new(ErrorKind::Invalid, "label requires 'name'"))?;
+                // Own pane: self-naming is identity, not an attack surface —
+                // ungated (write gates would make first-run labeling impossible).
+                if pane != self.own.pane {
+                    let marks = self.check_write(&pane, Tier::Operator, "label").await?;
+                    let cfg = self.policy.current();
+                    let eff = policy::effective_tier(&marks, &cfg);
+                    if policy::label_escalates(name, eff, &cfg) {
+                        return Err(DriverError::new(
+                            ErrorKind::Rejected,
+                            format!("renaming to '{name}' would raise this pane's config-granted tier"),
+                        )
+                        .with_hint("rename-as-escalation is blocked; ask the human to set the label"));
+                    }
+                }
                 self.run(&[
                     "set-option".into(),
                     "-p".into(),

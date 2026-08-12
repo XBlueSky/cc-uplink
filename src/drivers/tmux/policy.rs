@@ -155,6 +155,12 @@ pub fn classify_key(key: &str) -> Result<KeyClass, DriverError> {
     )
 }
 
+/// The rename-as-escalation guard: renaming a pane must never raise the tier
+/// the config globs would grant it beyond what it already has.
+pub fn label_escalates(new_name: &str, current_effective: Tier, cfg: &TmuxCfg) -> bool {
+    config_write_tier(Some(new_name), cfg) > current_effective
+}
+
 pub fn require(effective: Tier, needed: Tier, what: &str) -> Result<(), DriverError> {
     if effective >= needed {
         return Ok(());
@@ -335,6 +341,17 @@ mod decision_tests {
         assert!(matches!(e.kind, crate::error::ErrorKind::Rejected));
         assert!(e.message.contains("operator"));
         assert!(e.hint.as_deref().unwrap_or("").contains("@uplink_profile"));
+    }
+
+    #[test]
+    fn label_rename_cannot_raise_config_tier() {
+        let c = cfg(&[("lab-*", Tier::Godmode), ("codex", Tier::Operator)], &[]);
+        // operator pane renaming itself into the godmode glob: escalation
+        assert!(label_escalates("lab-1", Tier::Operator, &c));
+        // sideways or downward renames are fine
+        assert!(!label_escalates("codex", Tier::Operator, &c));
+        assert!(!label_escalates("scratch", Tier::Operator, &c));
+        assert!(!label_escalates("lab-1", Tier::Godmode, &c));
     }
 }
 
