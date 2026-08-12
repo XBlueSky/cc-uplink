@@ -410,6 +410,9 @@ mod tests {
             )
             .await;
         let txt = format!("{out:?}");
-        assert!(txt.contains("channel_act"), "must redirect to the act tool: {txt}");
+        assert!(
+            txt.contains("channel_act"),
+            "must redirect to the act tool: {txt}"
+        );
     }
 }

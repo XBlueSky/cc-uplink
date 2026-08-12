@@ -127,7 +127,9 @@ pub async fn run(cmd: &str, rest: &[String]) -> anyhow::Result<()> {
             Ok(())
         }
         other => {
-            eprintln!("unknown command '{other}'\nusage: cc-uplink [serve|doctor|send|invoke|log|tmux-snippet]");
+            eprintln!(
+                "unknown command '{other}'\nusage: cc-uplink [serve|doctor|send|invoke|log|tmux-snippet]"
+            );
             std::process::exit(2);
         }
     }
@@ -153,7 +155,12 @@ mod tests {
     #[test]
     fn tmux_snippet_covers_grant_surface() {
         let s = TMUX_SNIPPET;
-        for needle in ["@uplink_profile", "@uplink_read", "display-menu", "pane-border-format"] {
+        for needle in [
+            "@uplink_profile",
+            "@uplink_read",
+            "display-menu",
+            "pane-border-format",
+        ] {
             assert!(s.contains(needle), "snippet missing {needle}");
         }
     }

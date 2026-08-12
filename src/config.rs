@@ -152,8 +152,14 @@ mod tests {
         )
         .unwrap();
         use crate::drivers::tmux::policy::Tier;
-        assert_eq!(c.drivers.tmux.write_allow.get("codex"), Some(&Tier::Operator));
-        assert_eq!(c.drivers.tmux.write_allow.get("lab-*"), Some(&Tier::Godmode));
+        assert_eq!(
+            c.drivers.tmux.write_allow.get("codex"),
+            Some(&Tier::Operator)
+        );
+        assert_eq!(
+            c.drivers.tmux.write_allow.get("lab-*"),
+            Some(&Tier::Godmode)
+        );
         assert_eq!(c.drivers.tmux.read_deny, vec!["customer-*".to_string()]);
     }
 
@@ -168,7 +174,10 @@ mod tests {
     fn config_path_honours_env_override() {
         // SAFETY: single-threaded test process section; guarded name unique to this test
         unsafe { std::env::set_var("CC_UPLINK_CONFIG", "/tmp/x.toml") };
-        assert_eq!(Config::path(), Some(std::path::PathBuf::from("/tmp/x.toml")));
+        assert_eq!(
+            Config::path(),
+            Some(std::path::PathBuf::from("/tmp/x.toml"))
+        );
         unsafe { std::env::remove_var("CC_UPLINK_CONFIG") };
         // fallback path ends with the canonical suffix
         if let Some(p) = Config::path() {

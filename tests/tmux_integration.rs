@@ -119,7 +119,14 @@ async fn send_delivers_and_verifies() {
         .unwrap()
         .trim()
         .to_string();
-    srv.run(&["set-option", "-p", "-t", &target, "@uplink_profile", "operator"]);
+    srv.run(&[
+        "set-option",
+        "-p",
+        "-t",
+        &target,
+        "@uplink_profile",
+        "operator",
+    ]);
 
     let d = cc_uplink::drivers::tmux::TmuxDriver::new(Default::default())
         .await
@@ -186,7 +193,14 @@ async fn keys_requires_recent_read() {
         .unwrap()
         .trim()
         .to_string();
-    srv.run(&["set-option", "-p", "-t", &target, "@uplink_profile", "operator"]);
+    srv.run(&[
+        "set-option",
+        "-p",
+        "-t",
+        &target,
+        "@uplink_profile",
+        "operator",
+    ]);
     let d = cc_uplink::drivers::tmux::TmuxDriver::new(Default::default())
         .await
         .unwrap();
@@ -228,7 +242,14 @@ async fn ask_returns_transcript_delta() {
         .unwrap()
         .trim()
         .to_string();
-    srv.run(&["set-option", "-p", "-t", &target, "@uplink_profile", "operator"]);
+    srv.run(&[
+        "set-option",
+        "-p",
+        "-t",
+        &target,
+        "@uplink_profile",
+        "operator",
+    ]);
     let d = cc_uplink::drivers::tmux::TmuxDriver::new(Default::default())
         .await
         .unwrap();
@@ -319,7 +340,14 @@ async fn ask_envelope_carries_no_reply_block() {
         .unwrap()
         .trim()
         .to_string();
-    srv.run(&["set-option", "-p", "-t", &target, "@uplink_profile", "operator"]);
+    srv.run(&[
+        "set-option",
+        "-p",
+        "-t",
+        &target,
+        "@uplink_profile",
+        "operator",
+    ]);
     let d = cc_uplink::drivers::tmux::TmuxDriver::new(Default::default())
         .await
         .unwrap();
@@ -435,8 +463,13 @@ async fn poll_idle_reports_idle_for_quiet_pane() {
 
 #[tokio::test]
 async fn type_is_fire_and_forget_and_gated() {
-    let Some(srv) = common::TmuxTestServer::start() else { return };
-    let own = srv.run(&["list-panes", "-t", "it", "-F", "#{pane_id}"]).trim().to_string();
+    let Some(srv) = common::TmuxTestServer::start() else {
+        return;
+    };
+    let own = srv
+        .run(&["list-panes", "-t", "it", "-F", "#{pane_id}"])
+        .trim()
+        .to_string();
     let _env = common::env_guard().await;
     unsafe {
         std::env::set_var("TMUX", format!("{},0,0", srv.sock()));
@@ -445,29 +478,60 @@ async fn type_is_fire_and_forget_and_gated() {
     // Silent consumer: the no-echo console simulacrum.
     srv.run(&["split-window", "-t", "it", "-d", "sh -c 'cat > /dev/null'"]);
     let panes = srv.run(&["list-panes", "-t", "it", "-F", "#{pane_id}"]);
-    let target = panes.lines().find(|p| p.trim() != own).unwrap().trim().to_string();
-    let d = cc_uplink::drivers::tmux::TmuxDriver::new(Default::default()).await.unwrap();
+    let target = panes
+        .lines()
+        .find(|p| p.trim() != own)
+        .unwrap()
+        .trim()
+        .to_string();
+    let d = cc_uplink::drivers::tmux::TmuxDriver::new(Default::default())
+        .await
+        .unwrap();
 
     // Ungranted: read passes (observer), type is Rejected.
-    d.invoke(&target, "read", serde_json::json!({})).await.unwrap();
-    let e = d.invoke(&target, "type", serde_json::json!({"text": "hello"})).await.unwrap_err();
+    d.invoke(&target, "read", serde_json::json!({}))
+        .await
+        .unwrap();
+    let e = d
+        .invoke(&target, "type", serde_json::json!({"text": "hello"}))
+        .await
+        .unwrap_err();
     assert!(matches!(e.kind, cc_uplink::error::ErrorKind::Rejected));
 
     // Human grants operator → type returns immediately despite zero echo.
-    srv.run(&["set-option", "-p", "-t", &target, "@uplink_profile", "operator"]);
+    srv.run(&[
+        "set-option",
+        "-p",
+        "-t",
+        &target,
+        "@uplink_profile",
+        "operator",
+    ]);
     let t0 = std::time::Instant::now();
     let out = d
-        .invoke(&target, "type", serde_json::json!({"text": "hello Enter world", "enter": true}))
+        .invoke(
+            &target,
+            "type",
+            serde_json::json!({"text": "hello Enter world", "enter": true}),
+        )
         .await
         .unwrap();
-    assert!(t0.elapsed() < std::time::Duration::from_secs(3), "type must not wait");
+    assert!(
+        t0.elapsed() < std::time::Duration::from_secs(3),
+        "type must not wait"
+    );
     assert_eq!(out["typed"], 17);
 }
 
 #[tokio::test]
 async fn dangerous_keys_need_godmode() {
-    let Some(srv) = common::TmuxTestServer::start() else { return };
-    let own = srv.run(&["list-panes", "-t", "it", "-F", "#{pane_id}"]).trim().to_string();
+    let Some(srv) = common::TmuxTestServer::start() else {
+        return;
+    };
+    let own = srv
+        .run(&["list-panes", "-t", "it", "-F", "#{pane_id}"])
+        .trim()
+        .to_string();
     let _env = common::env_guard().await;
     unsafe {
         std::env::set_var("TMUX", format!("{},0,0", srv.sock()));
@@ -475,25 +539,60 @@ async fn dangerous_keys_need_godmode() {
     }
     srv.run(&["split-window", "-t", "it", "-d", "cat"]);
     let panes = srv.run(&["list-panes", "-t", "it", "-F", "#{pane_id}"]);
-    let target = panes.lines().find(|p| p.trim() != own).unwrap().trim().to_string();
-    srv.run(&["set-option", "-p", "-t", &target, "@uplink_profile", "operator"]);
-    let d = cc_uplink::drivers::tmux::TmuxDriver::new(Default::default()).await.unwrap();
+    let target = panes
+        .lines()
+        .find(|p| p.trim() != own)
+        .unwrap()
+        .trim()
+        .to_string();
+    srv.run(&[
+        "set-option",
+        "-p",
+        "-t",
+        &target,
+        "@uplink_profile",
+        "operator",
+    ]);
+    let d = cc_uplink::drivers::tmux::TmuxDriver::new(Default::default())
+        .await
+        .unwrap();
 
-    d.invoke(&target, "read", serde_json::json!({})).await.unwrap();
+    d.invoke(&target, "read", serde_json::json!({}))
+        .await
+        .unwrap();
     // benign key at operator proves it's the DANGER classification gating C-c,
     // not a blanket "all keys need godmode" rule.
-    d.invoke(&target, "keys", serde_json::json!({"keys": ["Enter"]})).await.unwrap();
-    let e = d.invoke(&target, "keys", serde_json::json!({"keys": ["C-c"]})).await.unwrap_err();
+    d.invoke(&target, "keys", serde_json::json!({"keys": ["Enter"]}))
+        .await
+        .unwrap();
+    let e = d
+        .invoke(&target, "keys", serde_json::json!({"keys": ["C-c"]}))
+        .await
+        .unwrap_err();
     assert!(matches!(e.kind, cc_uplink::error::ErrorKind::Rejected));
 
-    srv.run(&["set-option", "-p", "-t", &target, "@uplink_profile", "godmode"]);
-    d.invoke(&target, "keys", serde_json::json!({"keys": ["C-c"]})).await.unwrap();
+    srv.run(&[
+        "set-option",
+        "-p",
+        "-t",
+        &target,
+        "@uplink_profile",
+        "godmode",
+    ]);
+    d.invoke(&target, "keys", serde_json::json!({"keys": ["C-c"]}))
+        .await
+        .unwrap();
 }
 
 #[tokio::test]
 async fn write_grant_hot_reloads_from_config() {
-    let Some(srv) = common::TmuxTestServer::start() else { return };
-    let own = srv.run(&["list-panes", "-t", "it", "-F", "#{pane_id}"]).trim().to_string();
+    let Some(srv) = common::TmuxTestServer::start() else {
+        return;
+    };
+    let own = srv
+        .run(&["list-panes", "-t", "it", "-F", "#{pane_id}"])
+        .trim()
+        .to_string();
     let _env = common::env_guard().await;
     let dir = tempfile::TempDir::new().unwrap();
     let cfgpath = dir.path().join("config.toml");
@@ -505,30 +604,57 @@ async fn write_grant_hot_reloads_from_config() {
     }
     srv.run(&["split-window", "-t", "it", "-d", "cat"]);
     let panes = srv.run(&["list-panes", "-t", "it", "-F", "#{pane_id}"]);
-    let target = panes.lines().find(|p| p.trim() != own).unwrap().trim().to_string();
+    let target = panes
+        .lines()
+        .find(|p| p.trim() != own)
+        .unwrap()
+        .trim()
+        .to_string();
     srv.run(&["set-option", "-p", "-t", &target, "@name", "hot1"]); // human names it
-    let d = cc_uplink::drivers::tmux::TmuxDriver::new(Default::default()).await.unwrap();
+    let d = cc_uplink::drivers::tmux::TmuxDriver::new(Default::default())
+        .await
+        .unwrap();
 
-    d.invoke(&target, "read", serde_json::json!({})).await.unwrap();
-    let e = d.invoke(&target, "type", serde_json::json!({"text": "x"})).await.unwrap_err();
+    d.invoke(&target, "read", serde_json::json!({}))
+        .await
+        .unwrap();
+    let e = d
+        .invoke(&target, "type", serde_json::json!({"text": "x"}))
+        .await
+        .unwrap_err();
     assert!(matches!(e.kind, cc_uplink::error::ErrorKind::Rejected));
 
-    std::fs::write(&cfgpath, "[drivers.tmux]\nwrite_allow = { \"hot1\" = \"operator\" }\n").unwrap();
-    let f = std::fs::File::options().append(true).open(&cfgpath).unwrap();
-    f.set_modified(std::time::SystemTime::now() + std::time::Duration::from_secs(2)).unwrap();
+    std::fs::write(
+        &cfgpath,
+        "[drivers.tmux]\nwrite_allow = { \"hot1\" = \"operator\" }\n",
+    )
+    .unwrap();
+    let f = std::fs::File::options()
+        .append(true)
+        .open(&cfgpath)
+        .unwrap();
+    f.set_modified(std::time::SystemTime::now() + std::time::Duration::from_secs(2))
+        .unwrap();
 
     // Capture the result and clear the env BEFORE asserting, so a hot-reload
     // regression can't leak CC_UPLINK_CONFIG (→ a deleted tempdir) into the
     // rest of the suite and mask itself behind cascading failures.
-    let res = d.invoke(&target, "type", serde_json::json!({"text": "x"})).await;
+    let res = d
+        .invoke(&target, "type", serde_json::json!({"text": "x"}))
+        .await;
     unsafe { std::env::remove_var("CC_UPLINK_CONFIG") };
     res.unwrap();
 }
 
 #[tokio::test]
 async fn read_blocked_pane_rejects_content_ops() {
-    let Some(srv) = common::TmuxTestServer::start() else { return };
-    let own = srv.run(&["list-panes", "-t", "it", "-F", "#{pane_id}"]).trim().to_string();
+    let Some(srv) = common::TmuxTestServer::start() else {
+        return;
+    };
+    let own = srv
+        .run(&["list-panes", "-t", "it", "-F", "#{pane_id}"])
+        .trim()
+        .to_string();
     let _env = common::env_guard().await;
     unsafe {
         std::env::set_var("TMUX", format!("{},0,0", srv.sock()));
@@ -536,14 +662,28 @@ async fn read_blocked_pane_rejects_content_ops() {
     }
     srv.run(&["split-window", "-t", "it", "-d", "cat"]);
     let panes = srv.run(&["list-panes", "-t", "it", "-F", "#{pane_id}"]);
-    let target = panes.lines().find(|p| p.trim() != own).unwrap().trim().to_string();
+    let target = panes
+        .lines()
+        .find(|p| p.trim() != own)
+        .unwrap()
+        .trim()
+        .to_string();
     srv.run(&["set-option", "-p", "-t", &target, "@uplink_read", "off"]);
-    let d = cc_uplink::drivers::tmux::TmuxDriver::new(Default::default()).await.unwrap();
-
-    let e = d.invoke(&target, "read", serde_json::json!({})).await.unwrap_err();
-    assert!(matches!(e.kind, cc_uplink::error::ErrorKind::Rejected));
-    // await_idle still fine — returns no content
-    d.invoke(&target, "await_idle", serde_json::json!({"quiet_ms": 200, "timeout_ms": 5000}))
+    let d = cc_uplink::drivers::tmux::TmuxDriver::new(Default::default())
         .await
         .unwrap();
+
+    let e = d
+        .invoke(&target, "read", serde_json::json!({}))
+        .await
+        .unwrap_err();
+    assert!(matches!(e.kind, cc_uplink::error::ErrorKind::Rejected));
+    // await_idle still fine — returns no content
+    d.invoke(
+        &target,
+        "await_idle",
+        serde_json::json!({"quiet_ms": 200, "timeout_ms": 5000}),
+    )
+    .await
+    .unwrap();
 }

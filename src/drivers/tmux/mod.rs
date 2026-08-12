@@ -39,8 +39,9 @@ pub fn parse_pane_line(line: &str, cfg: &crate::config::TmuxCfg) -> Option<Chann
             }),
         });
     }
-    let (sw, proc_, label, profile, read, cwd) =
-        (fields[1], fields[2], fields[3], fields[4], fields[5], fields[6]);
+    let (sw, proc_, label, profile, read, cwd) = (
+        fields[1], fields[2], fields[3], fields[4], fields[5], fields[6],
+    );
     let marks = PaneMarks {
         label: (!label.is_empty()).then(|| label.to_string()),
         profile: Tier::parse(profile),
@@ -111,11 +112,10 @@ pub fn guard_ok(mark: Option<std::time::Instant>, ttl: Duration) -> bool {
 /// go through the `keys` op.
 pub fn validate_type_text(text: &str) -> Result<(), DriverError> {
     if text.chars().any(|c| c.is_control()) {
-        return Err(DriverError::new(
-            ErrorKind::Invalid,
-            "text contains control characters",
-        )
-        .with_hint("multi-line: multiple type calls; special keys: the keys op"));
+        return Err(
+            DriverError::new(ErrorKind::Invalid, "text contains control characters")
+                .with_hint("multi-line: multiple type calls; special keys: the keys op"),
+        );
     }
     Ok(())
 }
@@ -718,7 +718,10 @@ impl Driver for TmuxDriver {
             ])
             .await?;
         let cfg = self.policy.current();
-        Ok(out.lines().filter_map(|l| parse_pane_line(l, &cfg)).collect())
+        Ok(out
+            .lines()
+            .filter_map(|l| parse_pane_line(l, &cfg))
+            .collect())
     }
 
     fn ops(&self) -> Vec<OpSpec> {
@@ -897,9 +900,13 @@ impl Driver for TmuxDriver {
                     if policy::label_escalates(name, eff, &cfg) {
                         return Err(DriverError::new(
                             ErrorKind::Rejected,
-                            format!("renaming to '{name}' would raise this pane's config-granted tier"),
+                            format!(
+                                "renaming to '{name}' would raise this pane's config-granted tier"
+                            ),
                         )
-                        .with_hint("rename-as-escalation is blocked; ask the human to set the label"));
+                        .with_hint(
+                            "rename-as-escalation is blocked; ask the human to set the label",
+                        ));
                     }
                 }
                 self.run(&[
@@ -1064,7 +1071,9 @@ impl Driver for TmuxDriver {
                     }
                 }
             }
-            lines.push(format!("grants:        {granted} pane(s) with @uplink_profile"));
+            lines.push(format!(
+                "grants:        {granted} pane(s) with @uplink_profile"
+            ));
         }
         DoctorReport {
             driver: "tmux".into(),
@@ -1135,9 +1144,9 @@ mod tests {
         let cfg = crate::config::TmuxCfg::default();
         // @name "codex|admin" injects an extra '|' → 8 fields → fail closed.
         let e = parse_pane_line("%3|main:0.1|node|codex|admin|operator||/home/t", &cfg).unwrap();
-        assert_eq!(e.channel, "tmux:%3");           // pane still listed
+        assert_eq!(e.channel, "tmux:%3"); // pane still listed
         assert_eq!(e.detail["profile"], "observer"); // not the shifted "admin"/config value
-        assert_eq!(e.detail["readable"], false);     // not flipped to true by the shift
+        assert_eq!(e.detail["readable"], false); // not flipped to true by the shift
     }
 
     #[test]

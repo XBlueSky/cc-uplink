@@ -5,9 +5,9 @@
 //! markers themselves (`@uplink_profile`, `@uplink_read`) are human-set;
 //! the driver only ever reads them.
 
-use serde::{Deserialize, Serialize};
 use crate::config::TmuxCfg;
 use crate::error::{DriverError, ErrorKind};
+use serde::{Deserialize, Serialize};
 
 /// Ordered permission tiers; each includes everything below it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -80,7 +80,11 @@ pub fn parse_marks(raw: &str) -> PaneMarks {
     // could flip read_off to false — defeating the sticky read-deny guarantee.
     // Fail closed on any unexpected shape: observer (least privilege) + read-blocked.
     if fields.len() != 3 {
-        return PaneMarks { label: None, profile: None, read_off: true };
+        return PaneMarks {
+            label: None,
+            profile: None,
+            read_off: true,
+        };
     }
     let (label, profile, read) = (fields[0], fields[1], fields[2]);
     PaneMarks {
@@ -92,7 +96,9 @@ pub fn parse_marks(raw: &str) -> PaneMarks {
 
 /// Highest tier any matching write_allow glob grants (Observer if none).
 pub fn config_write_tier(label: Option<&str>, cfg: &TmuxCfg) -> Tier {
-    let Some(l) = label else { return Tier::Observer };
+    let Some(l) = label else {
+        return Tier::Observer;
+    };
     cfg.write_allow
         .iter()
         .filter(|(pat, _)| glob_match(pat, l))
@@ -134,8 +140,8 @@ pub enum KeyClass {
 }
 
 const BENIGN_KEYS: &[&str] = &[
-    "Enter", "Escape", "Tab", "Space", "BSpace", "Up", "Down", "Left", "Right",
-    "PageUp", "PageDown", "PPage", "NPage", "Home", "End",
+    "Enter", "Escape", "Tab", "Space", "BSpace", "Up", "Down", "Left", "Right", "PageUp",
+    "PageDown", "PPage", "NPage", "Home", "End",
 ];
 
 /// Benign = navigation/submit; Dangerous = any control/meta chord (C-c kills,
@@ -150,8 +156,9 @@ pub fn classify_key(key: &str) -> Result<KeyClass, DriverError> {
         return Ok(KeyClass::Dangerous);
     }
     Err(
-        DriverError::new(ErrorKind::Invalid, format!("unknown key '{key}'"))
-            .with_hint("special keys only (Enter, Escape, C-c…); literal text goes through the type op"),
+        DriverError::new(ErrorKind::Invalid, format!("unknown key '{key}'")).with_hint(
+            "special keys only (Enter, Escape, C-c…); literal text goes through the type op",
+        ),
     )
 }
 
@@ -286,8 +293,8 @@ mod decision_tests {
     fn pipe_in_label_fails_closed_not_unblocked() {
         // A label containing '|' must not shift fields and flip read_off to false.
         let m = parse_marks("my|label|operator|off");
-        assert_eq!(m.profile, None);   // least privilege
-        assert!(m.read_off);           // read stays blocked, not unblocked
+        assert_eq!(m.profile, None); // least privilege
+        assert!(m.read_off); // read stays blocked, not unblocked
         // well-formed inputs are unchanged
         let ok = parse_marks("codex|operator|");
         assert_eq!(ok.label.as_deref(), Some("codex"));
@@ -299,27 +306,51 @@ mod decision_tests {
     fn pane_option_wins_even_downward() {
         // explicit observer pins read-only despite a godmode glob
         let c = cfg(&[("lab-*", Tier::Godmode)], &[]);
-        let m = PaneMarks { label: Some("lab-1".into()), profile: Some(Tier::Observer), read_off: false };
+        let m = PaneMarks {
+            label: Some("lab-1".into()),
+            profile: Some(Tier::Observer),
+            read_off: false,
+        };
         assert_eq!(effective_tier(&m, &c), Tier::Observer);
     }
 
     #[test]
     fn config_globs_highest_match_wins_only_without_pane_option() {
         let c = cfg(&[("lab-*", Tier::Operator), ("lab-9", Tier::Godmode)], &[]);
-        let m = PaneMarks { label: Some("lab-9".into()), profile: None, read_off: false };
+        let m = PaneMarks {
+            label: Some("lab-9".into()),
+            profile: None,
+            read_off: false,
+        };
         assert_eq!(effective_tier(&m, &c), Tier::Godmode);
-        let unlabeled = PaneMarks { label: None, profile: None, read_off: false };
+        let unlabeled = PaneMarks {
+            label: None,
+            profile: None,
+            read_off: false,
+        };
         assert_eq!(effective_tier(&unlabeled, &c), Tier::Observer);
     }
 
     #[test]
     fn read_block_is_sticky_deny() {
         let c = cfg(&[], &["customer-*"]);
-        let m = PaneMarks { label: Some("customer-nas".into()), profile: Some(Tier::Godmode), read_off: false };
+        let m = PaneMarks {
+            label: Some("customer-nas".into()),
+            profile: Some(Tier::Godmode),
+            read_off: false,
+        };
         assert!(matches!(read_block(&m, &c), Some(ReadBlock::ConfigGlob(_))));
-        let m2 = PaneMarks { label: None, profile: None, read_off: true };
+        let m2 = PaneMarks {
+            label: None,
+            profile: None,
+            read_off: true,
+        };
         assert!(matches!(read_block(&m2, &c), Some(ReadBlock::PaneOption)));
-        let clear = PaneMarks { label: Some("dev".into()), profile: None, read_off: false };
+        let clear = PaneMarks {
+            label: Some("dev".into()),
+            profile: None,
+            read_off: false,
+        };
         assert!(read_block(&clear, &c).is_none());
     }
 
@@ -369,17 +400,28 @@ mod cache_tests {
         assert!(cache.current().write_allow.is_empty());
 
         // backdate-proof: bump mtime explicitly rather than sleeping
-        std::fs::write(&p, "[drivers.tmux]\nwrite_allow = { \"hot\" = \"operator\" }\n").unwrap();
+        std::fs::write(
+            &p,
+            "[drivers.tmux]\nwrite_allow = { \"hot\" = \"operator\" }\n",
+        )
+        .unwrap();
         let bumped = std::time::SystemTime::now() + std::time::Duration::from_secs(2);
         let f = std::fs::File::options().append(true).open(&p).unwrap();
         f.set_modified(bumped).unwrap();
-        assert_eq!(cache.current().write_allow.get("hot"), Some(&Tier::Operator));
+        assert_eq!(
+            cache.current().write_allow.get("hot"),
+            Some(&Tier::Operator)
+        );
 
         // parse error → keep last good config
         std::fs::write(&p, "not [ toml").unwrap();
         let f = std::fs::File::options().append(true).open(&p).unwrap();
-        f.set_modified(bumped + std::time::Duration::from_secs(2)).unwrap();
-        assert_eq!(cache.current().write_allow.get("hot"), Some(&Tier::Operator));
+        f.set_modified(bumped + std::time::Duration::from_secs(2))
+            .unwrap();
+        assert_eq!(
+            cache.current().write_allow.get("hot"),
+            Some(&Tier::Operator)
+        );
         std::fs::remove_dir_all(&dir).ok();
     }
 }
