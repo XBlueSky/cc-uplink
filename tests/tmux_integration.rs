@@ -119,6 +119,7 @@ async fn send_delivers_and_verifies() {
         .unwrap()
         .trim()
         .to_string();
+    srv.run(&["set-option", "-p", "-t", &target, "@uplink_profile", "operator"]);
 
     let d = cc_uplink::drivers::tmux::TmuxDriver::new(Default::default())
         .await
@@ -185,6 +186,7 @@ async fn keys_requires_recent_read() {
         .unwrap()
         .trim()
         .to_string();
+    srv.run(&["set-option", "-p", "-t", &target, "@uplink_profile", "operator"]);
     let d = cc_uplink::drivers::tmux::TmuxDriver::new(Default::default())
         .await
         .unwrap();
@@ -226,6 +228,7 @@ async fn ask_returns_transcript_delta() {
         .unwrap()
         .trim()
         .to_string();
+    srv.run(&["set-option", "-p", "-t", &target, "@uplink_profile", "operator"]);
     let d = cc_uplink::drivers::tmux::TmuxDriver::new(Default::default())
         .await
         .unwrap();
@@ -316,6 +319,7 @@ async fn ask_envelope_carries_no_reply_block() {
         .unwrap()
         .trim()
         .to_string();
+    srv.run(&["set-option", "-p", "-t", &target, "@uplink_profile", "operator"]);
     let d = cc_uplink::drivers::tmux::TmuxDriver::new(Default::default())
         .await
         .unwrap();

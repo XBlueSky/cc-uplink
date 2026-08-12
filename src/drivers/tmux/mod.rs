@@ -14,6 +14,7 @@ use tokio::sync::Mutex;
 use crate::config::TmuxCfg;
 use crate::core::driver::*;
 use crate::drivers::tmux::control::ControlMode;
+use crate::drivers::tmux::policy::{KeyClass, PaneMarks, PolicyCache, Tier};
 use crate::drivers::tmux::transport::{OneShotCli, OwnCtx, TmuxTransport, own_context};
 use crate::error::{DriverError, ErrorKind};
 
@@ -35,7 +36,7 @@ pub fn parse_pane_line(line: &str) -> Option<ChannelEntry> {
 }
 
 pub struct TmuxDriver {
-    cfg: TmuxCfg,
+    policy: PolicyCache,
     cli: OneShotCli,
     cm: Mutex<Option<Arc<ControlMode>>>,
     pub own: OwnCtx,
@@ -101,7 +102,7 @@ impl TmuxDriver {
             .await
             .ok();
         let d = Arc::new(Self {
-            cfg,
+            policy: PolicyCache::new(cfg),
             cli,
             cm: Mutex::new(cm),
             own,
@@ -287,16 +288,32 @@ impl TmuxDriver {
         Ok(serde_json::json!({ "text": out }))
     }
 
-    fn check_allowlist(&self, pane: &str, addr: &str) -> Result<(), DriverError> {
-        if let Some(list) = &self.cfg.allowlist {
-            if !list.iter().any(|x| x == pane || x == addr) {
-                return Err(DriverError::new(
-                    ErrorKind::Rejected,
-                    format!("target '{addr}' not in allowlist"),
-                ));
-            }
-        }
-        Ok(())
+    /// Read (never write) the pane's grant marks.
+    async fn pane_marks(&self, pane: &str) -> Result<PaneMarks, DriverError> {
+        let raw = self
+            .run(&[
+                "display-message".into(),
+                "-p".into(),
+                "-t".into(),
+                pane.into(),
+                "#{@name}|#{@uplink_profile}|#{@uplink_read}".into(),
+            ])
+            .await?;
+        Ok(policy::parse_marks(&raw))
+    }
+
+    /// Layer-1 write gate: effective tier must cover `needed`. Returns the
+    /// marks so callers can reuse them (label for escalation checks, etc.).
+    async fn check_write(
+        &self,
+        pane: &str,
+        needed: Tier,
+        what: &str,
+    ) -> Result<PaneMarks, DriverError> {
+        let marks = self.pane_marks(pane).await?;
+        let cfg = self.policy.current();
+        policy::require(policy::effective_tier(&marks, &cfg), needed, what)?;
+        Ok(marks)
     }
 
     async fn target_session(&self, pane: &str) -> Result<String, DriverError> {
@@ -625,7 +642,7 @@ impl Driver for TmuxDriver {
                 "cannot send to own pane (loop prevention)",
             ));
         }
-        self.check_allowlist(&pane, addr)?;
+        self.check_write(&pane, Tier::Operator, "send").await?;
         if msg.message.chars().any(|c| c.is_control()) {
             return Err(DriverError::new(
                 ErrorKind::Invalid,
@@ -755,7 +772,24 @@ impl Driver for TmuxDriver {
                         "cannot send keys to own pane",
                     ));
                 }
-                self.check_allowlist(&pane, addr)?;
+                let keys = args.get("keys").and_then(|v| v.as_array()).ok_or_else(|| {
+                    DriverError::new(ErrorKind::Invalid, "keys requires 'keys' array")
+                })?;
+                let mut needed = Tier::Operator;
+                for k in keys {
+                    let k = k.as_str().ok_or_else(|| {
+                        DriverError::new(ErrorKind::Invalid, "keys must be strings")
+                    })?;
+                    if policy::classify_key(k)? == KeyClass::Dangerous {
+                        needed = Tier::Godmode;
+                    }
+                }
+                let what = if needed == Tier::Godmode {
+                    "keys (dangerous chord)"
+                } else {
+                    "keys"
+                };
+                self.check_write(&pane, needed, what).await?;
                 let mark = self.read_marks.lock().await.get(&pane).copied();
                 if !guard_ok(mark, Duration::from_secs(60)) {
                     return Err(DriverError::new(
@@ -764,9 +798,6 @@ impl Driver for TmuxDriver {
                     )
                     .with_hint("invoke read on this pane first"));
                 }
-                let keys = args.get("keys").and_then(|v| v.as_array()).ok_or_else(|| {
-                    DriverError::new(ErrorKind::Invalid, "keys requires 'keys' array")
-                })?;
                 for k in keys {
                     let k = k.as_str().ok_or_else(|| {
                         DriverError::new(ErrorKind::Invalid, "keys must be strings")

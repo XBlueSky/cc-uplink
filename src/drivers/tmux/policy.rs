@@ -173,6 +173,57 @@ pub fn require(effective: Tier, needed: Tier, what: &str) -> Result<(), DriverEr
     ))
 }
 
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
+use std::time::SystemTime;
+
+/// Mtime-checked config cache: grants take effect on file save, no MCP
+/// restart. Only the tmux policy section reloads; driver enablement is
+/// construction-time. Parse errors keep the last good config (fail-stable,
+/// never fail-open to defaults).
+pub struct PolicyCache {
+    path: Option<PathBuf>,
+    state: Mutex<(Option<SystemTime>, Arc<TmuxCfg>)>,
+}
+
+impl PolicyCache {
+    pub fn new(initial: TmuxCfg) -> Self {
+        Self::with_path(initial, crate::config::Config::path())
+    }
+
+    pub fn with_path(initial: TmuxCfg, path: Option<PathBuf>) -> Self {
+        let mtime = path.as_deref().and_then(mtime_of);
+        Self {
+            path,
+            state: Mutex::new((mtime, Arc::new(initial))),
+        }
+    }
+
+    pub fn path(&self) -> Option<&Path> {
+        self.path.as_deref()
+    }
+
+    pub fn current(&self) -> Arc<TmuxCfg> {
+        let mut st = self.state.lock().expect("policy cache poisoned");
+        if let Some(p) = self.path.as_deref() {
+            let now = mtime_of(p);
+            if now != st.0 {
+                st.0 = now;
+                if let Ok(s) = std::fs::read_to_string(p) {
+                    if let Ok(full) = crate::config::Config::from_str(&s) {
+                        st.1 = Arc::new(full.drivers.tmux);
+                    }
+                }
+            }
+        }
+        st.1.clone()
+    }
+}
+
+fn mtime_of(p: &Path) -> Option<SystemTime> {
+    std::fs::metadata(p).and_then(|m| m.modified()).ok()
+}
+
 #[cfg(test)]
 mod tier_tests {
     use super::*;
@@ -284,5 +335,34 @@ mod decision_tests {
         assert!(matches!(e.kind, crate::error::ErrorKind::Rejected));
         assert!(e.message.contains("operator"));
         assert!(e.hint.as_deref().unwrap_or("").contains("@uplink_profile"));
+    }
+}
+
+#[cfg(test)]
+mod cache_tests {
+    use super::*;
+
+    #[test]
+    fn reloads_on_mtime_change_keeps_cache_on_parse_error() {
+        let dir = std::env::temp_dir().join(format!("ccu-cache-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let p = dir.join("config.toml");
+        std::fs::write(&p, "[drivers.tmux]\n").unwrap();
+        let cache = PolicyCache::with_path(TmuxCfg::default(), Some(p.clone()));
+        assert!(cache.current().write_allow.is_empty());
+
+        // backdate-proof: bump mtime explicitly rather than sleeping
+        std::fs::write(&p, "[drivers.tmux]\nwrite_allow = { \"hot\" = \"operator\" }\n").unwrap();
+        let bumped = std::time::SystemTime::now() + std::time::Duration::from_secs(2);
+        let f = std::fs::File::options().append(true).open(&p).unwrap();
+        f.set_modified(bumped).unwrap();
+        assert_eq!(cache.current().write_allow.get("hot"), Some(&Tier::Operator));
+
+        // parse error → keep last good config
+        std::fs::write(&p, "not [ toml").unwrap();
+        let f = std::fs::File::options().append(true).open(&p).unwrap();
+        f.set_modified(bumped + std::time::Duration::from_secs(2)).unwrap();
+        assert_eq!(cache.current().write_allow.get("hot"), Some(&Tier::Operator));
+        std::fs::remove_dir_all(&dir).ok();
     }
 }
