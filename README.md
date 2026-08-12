@@ -9,7 +9,7 @@
 **Website:** https://cc-uplink.pages.dev
 
 Claude Code's unified outbound channel layer: one Rust binary, one stdio MCP
-server, **six fixed tools** — with pluggable drivers underneath. Adding a
+server, **seven fixed tools** — with pluggable drivers underneath. Adding a
 driver never adds a tool, so your tool/skill listing budget stays flat no
 matter how many ways Claude can reach the outside world.
 
@@ -17,25 +17,56 @@ matter how many ways Claude can reach the outside world.
 |---|---|
 | `channel_list()` | Enumerate channels across drivers |
 | `channel_describe(channel, op?)` | On-demand JSON Schema for an op |
-| `channel_send(channel, message, opts?)` | Async message (tmux: inject → verify → Enter, evidence-bearing receipt); `image:*` channels are invoke-only, so `channel_send` is rejected there — use `channel_invoke` with `generate`/`edit` |
-| `channel_invoke(channel, op, args)` | Capability call (tmux ops, image generate/edit) |
+| `channel_send(channel, message, opts?)` | Async message (tmux: inject → verify → Enter, evidence-bearing receipt); `image:*` channels are act-only, so `channel_send` is rejected there — use `channel_act` with `generate`/`edit` |
+| `channel_observe(channel, op, args)` | Read-only capability call (ops with `mutating: false` — `read`, `await_idle`) |
+| `channel_act(channel, op, args)` | Mutating capability call (ops with `mutating: true` — `type`, `keys`, `ask`, `label`, image `generate`/`edit`) |
 | `channel_recv(cursor?)` | Drain inbound envelope audit log |
 | `channel_doctor()` | Aggregated per-driver diagnostics |
+
+Calling an op through the wrong tool (a mutating op via `channel_observe`, or
+vice versa) is rejected, naming the right tool — this split is what lets
+Claude Code's own MCP permission layer auto-allow "look" while gating "act".
 
 ## Channels
 
 - **`tmux:%3` / `tmux:<label>`** — talk to whatever runs in another tmux pane
-  (Codex CLI, another Claude, a shell). Control-mode-first (`tmux -C`),
+  (Codex CLI, another Claude, a shell), or type into a raw console (`nc`,
+  `telnet`, serial) with no shell at all. Control-mode-first (`tmux -C`),
   event-driven verify; peers install nothing — the message envelope teaches
-  them how to reply with plain `tmux send-keys`. Ops: `read`, `keys`
+  them how to reply with plain `tmux send-keys`. Ops: `read`, `type`
+  (read-guarded, literal fire-and-forget console injection), `keys`
   (read-guarded), `label`, `await_idle`, `ask` (mechanized round-trip that
-  captures everything the peer printed since your question).
+  captures everything the peer printed since your question). Write ops are
+  gated by [permission tier](#permission-tiers).
 - **`image:openai`** — direct OpenAI Images API (`gpt-image-1`), rustls only,
   key from env. Ops: `generate`, `edit`. Files land in `./uplink-images/`,
   absolute paths returned.
 - **`image:codex`** — borrows Codex CLI's built-in imagegen via
   `codex exec --sandbox workspace-write` (ChatGPT login, no API key needed).
   Ops: `generate`, `edit`.
+
+## Permission tiers
+
+tmux write ops are deny-by-default and tiered — every pane starts
+**observer** until a human grants more:
+
+| Tier | Grants | For |
+|---|---|---|
+| `observer` (default) | `read`, `await_idle` (+ ungated list/describe/doctor/recv) | any pane, unfamiliar panes |
+| `operator` | + `send`, `ask`, `type`, benign keys, `label` | consoles and peers you drive |
+| `godmode` | + dangerous key chords (`C-c`, `C-d`, …) | breakglass |
+
+Grants are human-only: a pane option (`tmux set -p @uplink_profile
+operator`) or a `write_allow` glob in `config.toml`. The driver never writes
+these itself. Get the `prefix+g` grant menu and the border badge that shows
+each pane's tier at a glance:
+
+```bash
+cc-uplink tmux-snippet > ~/.config/tmux/uplink.tmux
+echo 'source-file ~/.config/tmux/uplink.tmux' >> ~/.tmux.conf
+```
+
+Full reference: [docs/configuration.md](docs/configuration.md).
 
 ## Install
 
