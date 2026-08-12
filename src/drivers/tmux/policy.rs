@@ -168,6 +168,19 @@ pub fn label_escalates(new_name: &str, current_effective: Tier, cfg: &TmuxCfg) -
     config_write_tier(Some(new_name), cfg) > current_effective
 }
 
+/// A rename must not shrink config-glob read-block coverage. If the pane is
+/// currently read-denied by a `read_deny` glob on its label and the new name
+/// would not be, the rename lifts a confidentiality control — reject it.
+/// Pane-option `@uplink_read off` is name-independent (it survives a rename),
+/// so it is never the escapable path and short-circuits this check.
+pub fn label_unblocks_read(marks: &PaneMarks, new_name: &str, cfg: &TmuxCfg) -> bool {
+    if marks.read_off {
+        return false;
+    }
+    let denied = |name: &str| cfg.read_deny.iter().any(|g| glob_match(g, name));
+    marks.label.as_deref().is_some_and(denied) && !denied(new_name)
+}
+
 pub fn require(effective: Tier, needed: Tier, what: &str) -> Result<(), DriverError> {
     if effective >= needed {
         return Ok(());
@@ -383,6 +396,30 @@ mod decision_tests {
         assert!(!label_escalates("codex", Tier::Operator, &c));
         assert!(!label_escalates("scratch", Tier::Operator, &c));
         assert!(!label_escalates("lab-1", Tier::Godmode, &c));
+    }
+
+    #[test]
+    fn label_rename_cannot_lift_config_read_block() {
+        let c = cfg(&[], &["customer-*"]);
+        let denied = PaneMarks {
+            label: Some("customer-nas".into()),
+            profile: Some(Tier::Operator),
+            read_off: false,
+        };
+        assert!(label_unblocks_read(&denied, "codex", &c)); // out of glob → escalation
+        assert!(!label_unblocks_read(&denied, "customer-2", &c)); // still denied → fine
+        let opt = PaneMarks {
+            label: Some("customer-nas".into()),
+            profile: Some(Tier::Operator),
+            read_off: true,
+        };
+        assert!(!label_unblocks_read(&opt, "codex", &c)); // pane-option survives rename → not escapable here
+        let free = PaneMarks {
+            label: Some("dev".into()),
+            profile: Some(Tier::Operator),
+            read_off: false,
+        };
+        assert!(!label_unblocks_read(&free, "whatever", &c)); // nothing to lift
     }
 }
 

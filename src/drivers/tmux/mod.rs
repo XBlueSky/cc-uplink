@@ -779,7 +779,7 @@ impl Driver for TmuxDriver {
                 "cannot send to own pane (loop prevention)",
             ));
         }
-        self.check_write(&pane, Tier::Operator, "send").await?;
+        let marks = self.check_write(&pane, Tier::Operator, "send").await?;
         if msg.message.chars().any(|c| c.is_control()) {
             return Err(DriverError::new(
                 ErrorKind::Invalid,
@@ -846,6 +846,15 @@ impl Driver for TmuxDriver {
                 Ok(receipt)
             }
             None => {
+                let err = DriverError::new(ErrorKind::Timeout, "could not verify injected text")
+                    .with_hint("target TUI may have consumed input; inspect with read op");
+                // A read-blocked pane must never have its content captured into
+                // an error's evidence field, even though error.rs render() drops
+                // evidence today — the enforcement belongs at the source, not
+                // downstream of a rendering detail that could change.
+                if policy::read_block(&marks, &self.policy.current()).is_some() {
+                    return Err(err);
+                }
                 let cap = self
                     .run(&[
                         "capture-pane".into(),
@@ -865,11 +874,7 @@ impl Driver for TmuxDriver {
                     .chars()
                     .rev()
                     .collect();
-                Err(
-                    DriverError::new(ErrorKind::Timeout, "could not verify injected text")
-                        .with_evidence(tail)
-                        .with_hint("target TUI may have consumed input; inspect with read op"),
-                )
+                Err(err.with_evidence(tail))
             }
         }
     }
@@ -906,6 +911,17 @@ impl Driver for TmuxDriver {
                         )
                         .with_hint(
                             "rename-as-escalation is blocked; ask the human to set the label",
+                        ));
+                    }
+                    if policy::label_unblocks_read(&marks, name, &cfg) {
+                        return Err(DriverError::new(
+                            ErrorKind::Rejected,
+                            format!(
+                                "renaming to '{name}' would lift this pane's config read-block"
+                            ),
+                        )
+                        .with_hint(
+                            "a read-denied pane cannot be renamed out of its read_deny glob; ask the human",
                         ));
                     }
                 }
@@ -1049,21 +1065,32 @@ impl Driver for TmuxDriver {
                 "list-panes".into(),
                 "-a".into(),
                 "-F".into(),
-                "#{pane_id}|#{@uplink_profile}|#{@uplink_read}".into(),
+                "#{pane_id}|#{@uplink_profile}|#{@uplink_read}|#{@name}".into(),
             ])
             .await
         {
             let mut granted = 0usize;
             for l in out.lines() {
-                let mut it = l.splitn(3, '|');
-                let (pane, prof, read) = (
+                // Name is last so a '|' inside it (a free-form field) can't
+                // shift pane_id/profile/read — same shape-safety as parse_marks.
+                let mut it = l.splitn(4, '|');
+                let (pane, prof, read, name) = (
+                    it.next().unwrap_or(""),
                     it.next().unwrap_or(""),
                     it.next().unwrap_or(""),
                     it.next().unwrap_or(""),
                 );
                 if let Some(t) = crate::drivers::tmux::policy::Tier::parse(prof) {
                     granted += 1;
-                    if t >= crate::drivers::tmux::policy::Tier::Operator && read == "off" {
+                    let pane_option_blind = read == "off";
+                    let config_glob_blind = !name.is_empty()
+                        && cfg
+                            .read_deny
+                            .iter()
+                            .any(|g| crate::drivers::tmux::policy::glob_match(g, name));
+                    if t >= crate::drivers::tmux::policy::Tier::Operator
+                        && (pane_option_blind || config_glob_blind)
+                    {
                         lines.push(format!(
                             "WARN: {pane} is {} but read-blocked — the read guard makes it untypeable",
                             t.as_str()

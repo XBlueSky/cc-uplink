@@ -687,3 +687,82 @@ async fn read_blocked_pane_rejects_content_ops() {
     .await
     .unwrap();
 }
+
+#[tokio::test]
+async fn label_rename_cannot_escape_config_read_deny() {
+    let Some(srv) = common::TmuxTestServer::start() else {
+        return;
+    };
+    let own = srv
+        .run(&["list-panes", "-t", "it", "-F", "#{pane_id}"])
+        .trim()
+        .to_string();
+    let _env = common::env_guard().await;
+    let dir = tempfile::TempDir::new().unwrap();
+    let cfgpath = dir.path().join("config.toml");
+    // Start with an empty (default-matching) config so PolicyCache::new's
+    // baseline mtime/value matches what's on disk — same pattern as
+    // write_grant_hot_reloads_from_config. The real read_deny/write_allow
+    // config is written below, after construction, with a bumped mtime, so
+    // the hot-reload path (not the constructor) is what picks it up.
+    std::fs::write(&cfgpath, "[drivers.tmux]\n").unwrap();
+    unsafe {
+        std::env::set_var("TMUX", format!("{},0,0", srv.sock()));
+        std::env::set_var("TMUX_PANE", &own);
+        std::env::set_var("CC_UPLINK_CONFIG", &cfgpath);
+    }
+    srv.run(&["split-window", "-t", "it", "-d", "cat"]);
+    let panes = srv.run(&["list-panes", "-t", "it", "-F", "#{pane_id}"]);
+    let target = panes
+        .lines()
+        .find(|p| p.trim() != own)
+        .unwrap()
+        .trim()
+        .to_string();
+    // human names it into the (soon-to-be) read_deny glob
+    srv.run(&["set-option", "-p", "-t", &target, "@name", "customer-nas"]);
+    let d = cc_uplink::drivers::tmux::TmuxDriver::new(Default::default())
+        .await
+        .unwrap();
+
+    std::fs::write(
+        &cfgpath,
+        "[drivers.tmux]\nread_deny = [\"customer-*\"]\nwrite_allow = { \"customer-*\" = \"operator\" }\n",
+    )
+    .unwrap();
+    let f = std::fs::File::options()
+        .append(true)
+        .open(&cfgpath)
+        .unwrap();
+    f.set_modified(std::time::SystemTime::now() + std::time::Duration::from_secs(2))
+        .unwrap();
+
+    // Run the whole sequence, capturing results, then tear down the env
+    // panic-safely before any assert — a failure partway through must not
+    // leak CC_UPLINK_CONFIG (→ a deleted tempdir) into the rest of the suite.
+    let before = d.invoke(&target, "read", serde_json::json!({})).await;
+    let rename = d
+        .invoke(&target, "label", serde_json::json!({"name": "codex"}))
+        .await;
+    let after = d.invoke(&target, "read", serde_json::json!({})).await;
+    unsafe { std::env::remove_var("CC_UPLINK_CONFIG") };
+
+    let before_err = before.unwrap_err();
+    assert!(matches!(
+        before_err.kind,
+        cc_uplink::error::ErrorKind::Rejected
+    ));
+
+    let rename_err = rename.unwrap_err();
+    assert!(matches!(
+        rename_err.kind,
+        cc_uplink::error::ErrorKind::Rejected
+    ));
+
+    // rename didn't take — pane is still read-blocked under its old label
+    let after_err = after.unwrap_err();
+    assert!(matches!(
+        after_err.kind,
+        cc_uplink::error::ErrorKind::Rejected
+    ));
+}
