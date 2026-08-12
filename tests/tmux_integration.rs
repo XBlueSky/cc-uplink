@@ -480,6 +480,9 @@ async fn dangerous_keys_need_godmode() {
     let d = cc_uplink::drivers::tmux::TmuxDriver::new(Default::default()).await.unwrap();
 
     d.invoke(&target, "read", serde_json::json!({})).await.unwrap();
+    // benign key at operator proves it's the DANGER classification gating C-c,
+    // not a blanket "all keys need godmode" rule.
+    d.invoke(&target, "keys", serde_json::json!({"keys": ["Enter"]})).await.unwrap();
     let e = d.invoke(&target, "keys", serde_json::json!({"keys": ["C-c"]})).await.unwrap_err();
     assert!(matches!(e.kind, cc_uplink::error::ErrorKind::Rejected));
 
@@ -514,8 +517,12 @@ async fn write_grant_hot_reloads_from_config() {
     let f = std::fs::File::options().append(true).open(&cfgpath).unwrap();
     f.set_modified(std::time::SystemTime::now() + std::time::Duration::from_secs(2)).unwrap();
 
-    d.invoke(&target, "type", serde_json::json!({"text": "x"})).await.unwrap();
+    // Capture the result and clear the env BEFORE asserting, so a hot-reload
+    // regression can't leak CC_UPLINK_CONFIG (→ a deleted tempdir) into the
+    // rest of the suite and mask itself behind cascading failures.
+    let res = d.invoke(&target, "type", serde_json::json!({"text": "x"})).await;
     unsafe { std::env::remove_var("CC_UPLINK_CONFIG") };
+    res.unwrap();
 }
 
 #[tokio::test]
