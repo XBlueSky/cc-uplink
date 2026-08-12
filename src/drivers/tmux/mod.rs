@@ -21,10 +21,26 @@ use crate::error::{DriverError, ErrorKind};
 pub const PANE_FMT: &str = "#{pane_id}|#{session_name}:#{window_index}.#{pane_index}|#{pane_current_command}|#{@name}|#{@uplink_profile}|#{@uplink_read}|#{pane_current_path}";
 
 pub fn parse_pane_line(line: &str, cfg: &crate::config::TmuxCfg) -> Option<ChannelEntry> {
-    let mut it = line.splitn(7, '|');
-    let (pane, sw, proc_, label, profile, read, cwd) = (
-        it.next()?, it.next()?, it.next()?, it.next()?, it.next()?, it.next()?, it.next()?,
-    );
+    let fields: Vec<&str> = line.split('|').collect();
+    let pane = *fields.first()?;
+    // A '|' inside a free-form field (@name, cwd, command) shifts every
+    // positional field and could misreport profile/readable — the same
+    // corruption parse_marks() fails closed against. If the shape isn't the
+    // exact 7 fields, surface the pane at least privilege (observer,
+    // not-readable) rather than trusting shifted fields.
+    if fields.len() != 7 {
+        return Some(ChannelEntry {
+            channel: format!("tmux:{pane}"),
+            labels: vec![],
+            detail: serde_json::json!({
+                "profile": Tier::Observer.as_str(),
+                "readable": false,
+                "malformed": true,
+            }),
+        });
+    }
+    let (sw, proc_, label, profile, read, cwd) =
+        (fields[1], fields[2], fields[3], fields[4], fields[5], fields[6]);
     let marks = PaneMarks {
         label: (!label.is_empty()).then(|| label.to_string()),
         profile: Tier::parse(profile),
@@ -1067,6 +1083,16 @@ mod tests {
         assert!(e.labels.is_empty());
         assert_eq!(e.detail["profile"], "observer");
         assert_eq!(e.detail["readable"], false); // @uplink_read off
+    }
+
+    #[test]
+    fn pipe_in_label_fails_closed_in_listing() {
+        let cfg = crate::config::TmuxCfg::default();
+        // @name "codex|admin" injects an extra '|' → 8 fields → fail closed.
+        let e = parse_pane_line("%3|main:0.1|node|codex|admin|operator||/home/t", &cfg).unwrap();
+        assert_eq!(e.channel, "tmux:%3");           // pane still listed
+        assert_eq!(e.detail["profile"], "observer"); // not the shifted "admin"/config value
+        assert_eq!(e.detail["readable"], false);     // not flipped to true by the shift
     }
 
     #[test]
