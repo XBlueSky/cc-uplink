@@ -18,20 +18,28 @@ use crate::drivers::tmux::policy::{KeyClass, PaneMarks, PolicyCache, Tier};
 use crate::drivers::tmux::transport::{OneShotCli, OwnCtx, TmuxTransport, own_context};
 use crate::error::{DriverError, ErrorKind};
 
-pub const PANE_FMT: &str = "#{pane_id}|#{session_name}:#{window_index}.#{pane_index}|#{pane_current_command}|#{@name}|#{pane_current_path}";
+pub const PANE_FMT: &str = "#{pane_id}|#{session_name}:#{window_index}.#{pane_index}|#{pane_current_command}|#{@name}|#{@uplink_profile}|#{@uplink_read}|#{pane_current_path}";
 
-pub fn parse_pane_line(line: &str) -> Option<ChannelEntry> {
-    let mut it = line.splitn(5, '|');
-    let (pane, sw, proc_, label, cwd) =
-        (it.next()?, it.next()?, it.next()?, it.next()?, it.next()?);
+pub fn parse_pane_line(line: &str, cfg: &crate::config::TmuxCfg) -> Option<ChannelEntry> {
+    let mut it = line.splitn(7, '|');
+    let (pane, sw, proc_, label, profile, read, cwd) = (
+        it.next()?, it.next()?, it.next()?, it.next()?, it.next()?, it.next()?, it.next()?,
+    );
+    let marks = PaneMarks {
+        label: (!label.is_empty()).then(|| label.to_string()),
+        profile: Tier::parse(profile),
+        read_off: read == "off",
+    };
     Some(ChannelEntry {
         channel: format!("tmux:{pane}"),
-        labels: if label.is_empty() {
-            vec![]
-        } else {
-            vec![label.to_string()]
-        },
-        detail: serde_json::json!({ "sw": sw, "process": proc_, "cwd": cwd }),
+        labels: marks.label.clone().into_iter().collect(),
+        detail: serde_json::json!({
+            "sw": sw,
+            "process": proc_,
+            "cwd": cwd,
+            "profile": policy::effective_tier(&marks, cfg).as_str(),
+            "readable": policy::read_block(&marks, cfg).is_none(),
+        }),
     })
 }
 
@@ -693,7 +701,8 @@ impl Driver for TmuxDriver {
                 PANE_FMT.into(),
             ])
             .await?;
-        Ok(out.lines().filter_map(parse_pane_line).collect())
+        let cfg = self.policy.current();
+        Ok(out.lines().filter_map(|l| parse_pane_line(l, &cfg)).collect())
     }
 
     fn ops(&self) -> Vec<OpSpec> {
@@ -1042,16 +1051,22 @@ mod tests {
 
     #[test]
     fn parses_pane_line() {
-        let e = parse_pane_line("%3|main:0.1|node|codex|/home/t/proj").unwrap();
+        let cfg = crate::config::TmuxCfg::default();
+        let e = parse_pane_line("%3|main:0.1|node|codex|operator||/home/t/proj", &cfg).unwrap();
         assert_eq!(e.channel, "tmux:%3");
         assert_eq!(e.labels, vec!["codex".to_string()]);
         assert_eq!(e.detail["process"], "node");
+        assert_eq!(e.detail["profile"], "operator");
+        assert_eq!(e.detail["readable"], true);
     }
 
     #[test]
-    fn empty_label_gives_no_labels() {
-        let e = parse_pane_line("%0|main:0.0|zsh||/home/t").unwrap();
+    fn empty_label_gives_no_labels_and_observer() {
+        let cfg = crate::config::TmuxCfg::default();
+        let e = parse_pane_line("%0|main:0.0|zsh|||off|/home/t", &cfg).unwrap();
         assert!(e.labels.is_empty());
+        assert_eq!(e.detail["profile"], "observer");
+        assert_eq!(e.detail["readable"], false); // @uplink_read off
     }
 
     #[test]
