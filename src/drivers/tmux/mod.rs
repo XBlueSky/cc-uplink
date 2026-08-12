@@ -82,6 +82,20 @@ pub fn guard_ok(mark: Option<std::time::Instant>, ttl: Duration) -> bool {
     mark.map(|t| t.elapsed() <= ttl).unwrap_or(false)
 }
 
+/// Single-line semantics, same rail as `send`: control characters (incl. \n,
+/// \t) are rejected — multi-line input is multiple `type` calls, control keys
+/// go through the `keys` op.
+pub fn validate_type_text(text: &str) -> Result<(), DriverError> {
+    if text.chars().any(|c| c.is_control()) {
+        return Err(DriverError::new(
+            ErrorKind::Invalid,
+            "text contains control characters",
+        )
+        .with_hint("multi-line: multiple type calls; special keys: the keys op"));
+    }
+    Ok(())
+}
+
 /// The error both idle-wait paths return when a pane never goes quiet.
 ///
 /// Carries its own triage, because this is a routine outcome rather than a
@@ -595,6 +609,67 @@ impl TmuxDriver {
             .insert(pane.to_string(), std::time::Instant::now());
         Ok(serde_json::json!({ "transcript": transcript, "receipt": receipt }))
     }
+
+    /// Raw console injection: literal text, optional Enter, then return.
+    /// Deliberately fire-and-forget — no echo verification, no idle wait —
+    /// because raw consoles (nc, telnet, password prompts) break every
+    /// assumption send's verify loop makes. Each tmux command still has the
+    /// transport's hard 10 s timeout, so nothing here can hang. Confirmation
+    /// is the caller's job: read the pane afterwards.
+    async fn op_type(
+        &self,
+        pane: &str,
+        args: &serde_json::Value,
+    ) -> Result<serde_json::Value, DriverError> {
+        let text = args
+            .get("text")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| DriverError::new(ErrorKind::Invalid, "type requires 'text'"))?;
+        let enter = args.get("enter").and_then(|v| v.as_bool()).unwrap_or(false);
+        let sensitive = args
+            .get("sensitive")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        validate_type_text(text)?;
+        if pane == self.own.pane {
+            return Err(DriverError::new(
+                ErrorKind::Rejected,
+                "cannot type into own pane",
+            ));
+        }
+        self.check_write(pane, Tier::Operator, "type").await?;
+        let mark = self.read_marks.lock().await.get(pane).copied();
+        if !guard_ok(mark, Duration::from_secs(60)) {
+            return Err(DriverError::new(
+                ErrorKind::Rejected,
+                "read guard: pane not read recently",
+            )
+            .with_hint("invoke read on this pane first — look, then type"));
+        }
+        self.run(&[
+            "send-keys".into(),
+            "-t".into(),
+            pane.into(),
+            "-l".into(),
+            "--".into(),
+            text.into(),
+        ])
+        .await?;
+        if enter {
+            self.run(&["send-keys".into(), "-t".into(), pane.into(), "Enter".into()])
+                .await?;
+        }
+        self.sink.append(&serde_json::json!({
+            "ts": now_rfc3339(),
+            "dir": "out",
+            "channel": format!("tmux:{pane}"),
+            "op": "type",
+            "excerpt": if sensitive { "[redacted]" } else { text },
+            "len": text.chars().count(),
+            "enter": enter,
+        }));
+        Ok(serde_json::json!({ "typed": text.chars().count(), "enter": enter }))
+    }
 }
 
 pub use crate::core::now_rfc3339;
@@ -634,6 +709,12 @@ impl Driver for TmuxDriver {
                 summary: "send special keys (Enter, Escape, C-c); requires read within 60s".into(),
                 params_schema: serde_json::json!({"type":"object","required":["keys"],"properties":{"keys":{"type":"array","items":{"type":"string"}}}}),
                 result_schema: serde_json::json!({"type":"object"}),
+            },
+            OpSpec {
+                op: "type".into(),
+                summary: "type literal text into a raw console (fire-and-forget; read afterwards to confirm)".into(),
+                params_schema: serde_json::json!({"type":"object","required":["text"],"properties":{"text":{"type":"string"},"enter":{"type":"boolean","default":false},"sensitive":{"type":"boolean","default":false}}}),
+                result_schema: serde_json::json!({"type":"object","properties":{"typed":{"type":"integer"},"enter":{"type":"boolean"}}}),
             },
             OpSpec {
                 op: "label".into(),
@@ -849,6 +930,7 @@ impl Driver for TmuxDriver {
                 }
                 Ok(serde_json::json!({ "sent": keys.len() }))
             }
+            "type" => self.op_type(&pane, &args).await,
             "await_idle" => {
                 let quiet_ms = args
                     .get("quiet_ms")
@@ -985,5 +1067,19 @@ mod tests {
             rendered.contains("read"),
             "an idle timeout must point at the read op: {rendered}"
         );
+    }
+}
+
+#[cfg(test)]
+mod type_tests {
+    use super::*;
+
+    #[test]
+    fn type_text_rejects_control_chars() {
+        assert!(validate_type_text("ls -la /tmp").is_ok());
+        assert!(validate_type_text("Enter").is_ok()); // literal word, not the key
+        let e = validate_type_text("do\nthing").unwrap_err();
+        assert!(matches!(e.kind, ErrorKind::Invalid));
+        assert!(validate_type_text("tab\there").is_err());
     }
 }
