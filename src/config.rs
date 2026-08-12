@@ -1,5 +1,8 @@
 use serde::Deserialize;
+use std::collections::BTreeMap;
+use std::path::PathBuf;
 
+use crate::drivers::tmux::policy::Tier;
 use crate::error::{DriverError, ErrorKind};
 
 #[derive(Debug, Default, Deserialize)]
@@ -22,6 +25,14 @@ pub struct DriversCfg {
 pub struct TmuxCfg {
     #[serde(default = "default_true")]
     pub enabled: bool,
+    /// Label glob → granted tier. Consulted only when the pane carries no
+    /// `@uplink_profile` option. Highest matching tier wins.
+    #[serde(default)]
+    pub write_allow: BTreeMap<String, Tier>,
+    /// Label globs whose panes are read-blocked at every tier (sticky deny).
+    #[serde(default)]
+    pub read_deny: Vec<String>,
+    /// REMOVED in 0.1.0 — parsed only so doctor can tell you to migrate.
     #[serde(default)]
     pub allowlist: Option<Vec<String>>,
 }
@@ -30,6 +41,8 @@ impl Default for TmuxCfg {
     fn default() -> Self {
         Self {
             enabled: true,
+            write_allow: BTreeMap::new(),
+            read_deny: Vec::new(),
             allowlist: None,
         }
     }
@@ -105,9 +118,16 @@ impl Config {
         toml::from_str(s).map_err(|e| DriverError::new(ErrorKind::Invalid, format!("config: {e}")))
     }
 
+    /// Config file location: `$CC_UPLINK_CONFIG` wins (tests, unusual setups),
+    /// else the platform config dir.
+    pub fn path() -> Option<PathBuf> {
+        std::env::var_os("CC_UPLINK_CONFIG")
+            .map(PathBuf::from)
+            .or_else(|| dirs::config_dir().map(|d| d.join("cc-uplink/config.toml")))
+    }
+
     pub fn load() -> Self {
-        let path = dirs::config_dir().map(|d| d.join("cc-uplink/config.toml"));
-        match path.and_then(|p| std::fs::read_to_string(p).ok()) {
+        match Config::path().and_then(|p| std::fs::read_to_string(p).ok()) {
             Some(s) => Self::from_str(&s).unwrap_or_default(),
             None => Self::default(),
         }
@@ -122,18 +142,38 @@ mod tests {
     fn defaults_when_empty() {
         let c = Config::from_str("").unwrap();
         assert!(c.drivers.tmux.enabled);
-        assert!(c.drivers.tmux.allowlist.is_none());
+        assert!(c.drivers.tmux.write_allow.is_empty());
     }
 
     #[test]
-    fn parses_allowlist() {
-        let c =
-            Config::from_str("[drivers.tmux]\nenabled = true\nallowlist = [\"codex\", \"%1\"]\n")
-                .unwrap();
-        assert_eq!(
-            c.drivers.tmux.allowlist.as_deref(),
-            Some(&["codex".to_string(), "%1".to_string()][..])
-        );
+    fn parses_write_allow_and_read_deny() {
+        let c = Config::from_str(
+            "[drivers.tmux]\nwrite_allow = { \"codex\" = \"operator\", \"lab-*\" = \"godmode\" }\nread_deny = [\"customer-*\"]\n",
+        )
+        .unwrap();
+        use crate::drivers::tmux::policy::Tier;
+        assert_eq!(c.drivers.tmux.write_allow.get("codex"), Some(&Tier::Operator));
+        assert_eq!(c.drivers.tmux.write_allow.get("lab-*"), Some(&Tier::Godmode));
+        assert_eq!(c.drivers.tmux.read_deny, vec!["customer-*".to_string()]);
+    }
+
+    #[test]
+    fn legacy_allowlist_still_parses_but_is_separate() {
+        let c = Config::from_str("[drivers.tmux]\nallowlist = [\"codex\"]\n").unwrap();
+        assert!(c.drivers.tmux.allowlist.is_some()); // doctor will warn on this
+        assert!(c.drivers.tmux.write_allow.is_empty());
+    }
+
+    #[test]
+    fn config_path_honours_env_override() {
+        // SAFETY: single-threaded test process section; guarded name unique to this test
+        unsafe { std::env::set_var("CC_UPLINK_CONFIG", "/tmp/x.toml") };
+        assert_eq!(Config::path(), Some(std::path::PathBuf::from("/tmp/x.toml")));
+        unsafe { std::env::remove_var("CC_UPLINK_CONFIG") };
+        // fallback path ends with the canonical suffix
+        if let Some(p) = Config::path() {
+            assert!(p.ends_with("cc-uplink/config.toml"));
+        }
     }
 
     #[test]
