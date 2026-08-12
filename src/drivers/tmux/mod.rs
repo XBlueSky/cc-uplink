@@ -1021,6 +1021,51 @@ impl Driver for TmuxDriver {
             "own pane:      {} (session {})",
             self.own.pane, self.own.session
         ));
+        let cfg = self.policy.current();
+        lines.push(format!(
+            "policy:        {} write_allow glob(s), {} read_deny glob(s), config {}",
+            cfg.write_allow.len(),
+            cfg.read_deny.len(),
+            self.policy
+                .path()
+                .map(|p| p.display().to_string())
+                .unwrap_or_else(|| "none (defaults)".into()),
+        ));
+        if cfg.allowlist.is_some() {
+            lines.push(
+                "WARN: 'allowlist' was removed — migrate to write_allow (docs/configuration.md)"
+                    .into(),
+            );
+        }
+        if let Ok(out) = self
+            .run(&[
+                "list-panes".into(),
+                "-a".into(),
+                "-F".into(),
+                "#{pane_id}|#{@uplink_profile}|#{@uplink_read}".into(),
+            ])
+            .await
+        {
+            let mut granted = 0usize;
+            for l in out.lines() {
+                let mut it = l.splitn(3, '|');
+                let (pane, prof, read) = (
+                    it.next().unwrap_or(""),
+                    it.next().unwrap_or(""),
+                    it.next().unwrap_or(""),
+                );
+                if let Some(t) = crate::drivers::tmux::policy::Tier::parse(prof) {
+                    granted += 1;
+                    if t >= crate::drivers::tmux::policy::Tier::Operator && read == "off" {
+                        lines.push(format!(
+                            "WARN: {pane} is {} but read-blocked — the read guard makes it untypeable",
+                            t.as_str()
+                        ));
+                    }
+                }
+            }
+            lines.push(format!("grants:        {granted} pane(s) with @uplink_profile"));
+        }
         DoctorReport {
             driver: "tmux".into(),
             ok,
