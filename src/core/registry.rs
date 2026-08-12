@@ -85,6 +85,7 @@ mod tests {
             vec![OpSpec {
                 op: "echo".into(),
                 summary: "echo".into(),
+                mutating: false,
                 params_schema: serde_json::json!({}),
                 result_schema: serde_json::json!({}),
             }]

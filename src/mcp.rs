@@ -1,4 +1,5 @@
-//! rmcp-based MCP server exposing the six fixed `cc-uplink` channel tools.
+//! rmcp-based MCP server exposing the seven fixed `cc-uplink` channel tools
+//! (list, describe, observe, act, send, recv, doctor).
 //!
 //! Adapted against rmcp 2.2.0's actual macro/type surface (see
 //! `~/.cargo/registry/src/*/rmcp-2.2.0/tests/test_tool_macros.rs` for the
@@ -176,23 +177,65 @@ impl Uplink {
         }
     }
 
-    #[tool(description = "Invoke a capability op on a channel (see channel_describe for schemas)")]
-    async fn channel_invoke(&self, Parameters(p): Parameters<InvokeParams>) -> CallToolResult {
+    #[tool(
+        description = "Invoke a read-only op on a channel (read, await_idle — see channel_describe)"
+    )]
+    async fn channel_observe(&self, Parameters(p): Parameters<InvokeParams>) -> CallToolResult {
+        self.invoke_class(p, false).await
+    }
+
+    #[tool(
+        description = "Invoke a mutating op on a channel (type, keys, ask, label, generate, edit — see channel_describe)"
+    )]
+    async fn channel_act(&self, Parameters(p): Parameters<InvokeParams>) -> CallToolResult {
+        self.invoke_class(p, true).await
+    }
+
+    async fn invoke_class(&self, p: InvokeParams, mutating: bool) -> CallToolResult {
         match self.reg.driver_for(&p.channel) {
-            Ok((d, addr)) => match render_result(
-                d.invoke(
-                    &addr,
-                    &p.op,
-                    p.args
-                        .map(serde_json::Value::Object)
-                        .unwrap_or_else(|| serde_json::json!({})),
-                )
-                .await,
-                driver_of(&p.channel),
-            ) {
-                Ok(s) => text_ok(s),
-                Err(s) => text_err(s),
-            },
+            Ok((d, addr)) => {
+                match d.ops().into_iter().find(|o| o.op == p.op) {
+                    Some(spec) if spec.mutating != mutating => {
+                        let (is, right) = if spec.mutating {
+                            ("mutating", "channel_act")
+                        } else {
+                            ("read-only", "channel_observe")
+                        };
+                        return text_err(
+                            DriverError::new(
+                                crate::error::ErrorKind::Invalid,
+                                format!("op '{}' is {is} — call it via {right}", p.op),
+                            )
+                            .render(driver_of(&p.channel)),
+                        );
+                    }
+                    None => {
+                        return text_err(
+                            DriverError::new(
+                                crate::error::ErrorKind::NotFound,
+                                format!("no op '{}'", p.op),
+                            )
+                            .with_hint("run channel_describe")
+                            .render(driver_of(&p.channel)),
+                        );
+                    }
+                    Some(_) => {}
+                }
+                match render_result(
+                    d.invoke(
+                        &addr,
+                        &p.op,
+                        p.args
+                            .map(serde_json::Value::Object)
+                            .unwrap_or_else(|| serde_json::json!({})),
+                    )
+                    .await,
+                    driver_of(&p.channel),
+                ) {
+                    Ok(s) => text_ok(s),
+                    Err(s) => text_err(s),
+                }
+            }
             Err(e) => text_err(e.render(driver_of(&p.channel))),
         }
     }
@@ -236,8 +279,10 @@ impl ServerHandler for Uplink {
     fn get_info(&self) -> ServerInfo {
         ServerInfo::new(ServerCapabilities::builder().enable_tools().build()).with_instructions(
             "cc-uplink: unified outbound channels. Start with channel_list; \
-             call channel_describe before the first invoke of an op; never poll for replies — \
-             they arrive in your own pane (channel_recv is an audit log).",
+             call channel_describe before the first use of an op; read-only ops \
+             go through channel_observe, mutating ops through channel_act; never \
+             poll for replies — they arrive in your own pane (channel_recv is an \
+             audit log).",
         )
     }
 }
@@ -276,7 +321,7 @@ pub async fn build_registry() -> Arc<Registry> {
     Arc::new(reg)
 }
 
-/// Build the registry and serve the six-tool MCP server over stdio until the
+/// Build the registry and serve the seven-tool MCP server over stdio until the
 /// client disconnects (stdin EOF).
 pub async fn serve() -> anyhow::Result<()> {
     let reg = build_registry().await;
@@ -340,5 +385,31 @@ mod tests {
             list.iter()
                 .any(|(i, cs)| i.id == "image" && cs.iter().any(|c| c.channel == "image:openai"))
         );
+    }
+
+    #[tokio::test]
+    async fn observe_rejects_mutating_op_and_names_the_right_tool() {
+        let mut reg = Registry::new();
+        let cfg = ImageOpenAiCfg {
+            enabled: true,
+            api_key_env: "CC_UPLINK_T_SPLIT_NOKEY".into(),
+            model: "gpt-image-1".into(),
+            base_url: "http://127.0.0.1:9".into(),
+        };
+        let backends: Vec<Box<dyn ImageBackend>> = vec![Box::new(OpenAiBackend::new(cfg))];
+        reg.register(Arc::new(ImageDriver::from_backends(backends)));
+        let u = super::Uplink::new(Arc::new(reg));
+        let out = u
+            .invoke_class(
+                super::InvokeParams {
+                    channel: "image:openai".into(),
+                    op: "generate".into(),
+                    args: None,
+                },
+                false, // called via channel_observe
+            )
+            .await;
+        let txt = format!("{out:?}");
+        assert!(txt.contains("channel_act"), "must redirect to the act tool: {txt}");
     }
 }

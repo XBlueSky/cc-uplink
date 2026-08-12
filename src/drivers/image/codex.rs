@@ -270,6 +270,7 @@ impl ImageBackend for CodexBackend {
             OpSpec {
                 op: "generate".into(),
                 summary: "[codex] generate image(s) via Codex CLI's built-in imagegen (uses your codex login; no API key)".into(),
+                mutating: true,
                 params_schema: serde_json::json!({
                     "type": "object",
                     "required": ["prompt"],
@@ -287,6 +288,7 @@ impl ImageBackend for CodexBackend {
             OpSpec {
                 op: "edit".into(),
                 summary: "[codex] edit an existing image via Codex CLI's built-in imagegen".into(),
+                mutating: true,
                 params_schema: serde_json::json!({
                     "type": "object",
                     "required": ["input", "prompt"],
