@@ -74,12 +74,15 @@ pub struct PaneMarks {
 }
 
 pub fn parse_marks(raw: &str) -> PaneMarks {
-    let mut it = raw.trim_end_matches(['\n', '\r']).splitn(3, '|');
-    let (label, profile, read) = (
-        it.next().unwrap_or(""),
-        it.next().unwrap_or(""),
-        it.next().unwrap_or(""),
-    );
+    let trimmed = raw.trim_end_matches(['\n', '\r']);
+    let fields: Vec<&str> = trimmed.split('|').collect();
+    // A '|' inside @name (the free-form field) would shift every field and
+    // could flip read_off to false — defeating the sticky read-deny guarantee.
+    // Fail closed on any unexpected shape: observer (least privilege) + read-blocked.
+    if fields.len() != 3 {
+        return PaneMarks { label: None, profile: None, read_off: true };
+    }
+    let (label, profile, read) = (fields[0], fields[1], fields[2]);
     PaneMarks {
         label: (!label.is_empty()).then(|| label.to_string()),
         profile: Tier::parse(profile),
@@ -220,6 +223,19 @@ mod decision_tests {
         assert_eq!(m.label, None);
         assert_eq!(m.profile, None); // unknown value never grants
         assert!(m.read_off);
+    }
+
+    #[test]
+    fn pipe_in_label_fails_closed_not_unblocked() {
+        // A label containing '|' must not shift fields and flip read_off to false.
+        let m = parse_marks("my|label|operator|off");
+        assert_eq!(m.profile, None);   // least privilege
+        assert!(m.read_off);           // read stays blocked, not unblocked
+        // well-formed inputs are unchanged
+        let ok = parse_marks("codex|operator|");
+        assert_eq!(ok.label.as_deref(), Some("codex"));
+        assert_eq!(ok.profile, Some(Tier::Operator));
+        assert!(!ok.read_off);
     }
 
     #[test]
