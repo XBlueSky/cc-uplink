@@ -11,8 +11,10 @@
 #
 # The one thing the Git integration cannot do is rebuild when a release is
 # published, which matters because the landing page bakes in the latest release
-# tag and its download links. The release-triggered job below pokes a Pages
-# deploy hook to cover that.
+# tag and its download links. That poke lives in release.yml's `refresh-site`
+# job — it used to live here behind `workflow_run: [Release]`, but Release now
+# runs on every push to main rather than only on a tag, so that trigger no
+# longer means "a release shipped".
 #
 # Because deploy lives entirely in the Cloudflare Pages dashboard and not in
 # this file, nothing else in the repo records what that project must be
@@ -50,9 +52,6 @@ on:
       - 'plugins/**'
       - '.github/workflows/site.yml'
   workflow_dispatch:
-  workflow_run:
-    workflows: [Release]
-    types: [completed]
 
 concurrency:
   group: site-${{ github.ref }}
@@ -63,10 +62,6 @@ permissions:
 
 jobs:
   build:
-    # A release does not change the source, so re-running the whole gate on the
-    # Release workflow's completion would just double CI cost. The rebuild that
-    # a release does need is the Pages one, below.
-    if: github.event_name != 'workflow_run'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -106,31 +101,3 @@ jobs:
           for slug in cli configuration downstream-contracts security wire-contract; do
             test -f "site/dist/docs/$slug/index.html"
           done
-
-  # Publishing a release changes the version and download links the landing page
-  # baked in at build time, so the site needs rebuilding. Cloudflare's Git
-  # integration only builds on push, hence the deploy hook.
-  #
-  # This job is skipped when CC_PAGES_DEPLOY_HOOK is unset, so the workflow stays
-  # green for a fork or before the hook is configured. Create the hook in the
-  # Pages project (Settings → Builds & deployments → Deploy hooks, branch main)
-  # and store its URL as a repository secret.
-  refresh-after-release:
-    if: github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success'
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - name: Trigger a Pages rebuild so the release links are current
-        env:
-          HOOK: ${{ secrets.CC_PAGES_DEPLOY_HOOK }}
-        run: |
-          set -eu
-          if [ -z "${HOOK:-}" ]; then
-            echo "CC_PAGES_DEPLOY_HOOK is not set — skipping the rebuild."
-            echo "The site will still refresh on the next push to main."
-            exit 0
-          fi
-          # Fail loudly on a non-2xx: a silently-dropped rebuild means the site
-          # advertises a stale release for as long as main sits untouched.
-          curl --fail --silent --show-error -X POST "$HOOK" > /dev/null
-          echo "Pages rebuild triggered."

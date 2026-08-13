@@ -13,6 +13,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      # Cheapest gate in the file and the one with the nastiest failure mode, so
+      # it runs before the toolchain is even installed. A server-version pin that
+      # drifts from Cargo.toml means Claude Code installs a new plugin and
+      # launcher.sh silently downloads the old server binary.
+      - name: Version pins agree (Cargo.toml / plugin.json / server-version)
+        run: ./scripts/sync-versions.sh --check
       - name: Install tmux (integration tests spin private-socket servers)
         run: sudo apt-get update -qq && sudo apt-get install -y -qq tmux
       - uses: dtolnay/rust-toolchain@stable
