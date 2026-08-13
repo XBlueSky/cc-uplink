@@ -1,6 +1,67 @@
+# release-plz derives the next version and the CHANGELOG from Conventional
+# Commit subjects, then owns the tag and the GitHub Release. Driven by
+# .github/workflows/release.yml on every push to main.
+#
+# `git_release_enable = true` is a deliberate reversal of the old setup, where
+# a tag push triggered release.yml and taiki-e/create-gh-release-action made
+# the Release. That split cannot survive here: release-plz pushes its tag with
+# GITHUB_TOKEN, and tags created that way do not trigger other workflows — the
+# tag would land and nothing would ever build a binary for it. So release-plz
+# creates the Release and release.yml attaches assets to it in the same run.
 [workspace]
-changelog_update = true
+publish = false
+git_only = true
 git_tag_enable = true
-# GitHub Release creation is owned by .github/workflows/release.yml
-# (triggered by tag push); release-plz only manages version + changelog.
-git_release_enable = false
+git_release_enable = true
+git_tag_name = "v{{ version }}"
+release_always = true
+# Off, deliberately — this is where cc-loadout's config does not transfer.
+# cc-loadout is bin-only, so its `semver_check = true` never had a library to
+# check. cc-uplink has src/lib.rs, but only so main.rs and tests/ can reach the
+# modules; the crate is unpublished and nothing outside this repo links it, so
+# cargo-semver-checks would spend every release guarding an API with no
+# consumers. The surfaces that genuinely version-drift are the MCP wire
+# contract and the HTTP/CLI contracts in docs/downstream-contracts.md, none of
+# which it can see.
+semver_check = false
+
+[changelog]
+header = """# Changelog
+
+All notable changes to this project will be documented in this file.
+
+"""
+body = """
+## [{{ version }}] - {{ timestamp | date(format="%Y-%m-%d") }}
+{% for group, commits in commits | group_by(attribute="group") %}
+### {{ group | upper_first }}
+{% for commit in commits %}
+- {% if commit.breaking %}**BREAKING** {% endif %}{{ commit.message }}
+{%- endfor %}
+{% endfor %}
+"""
+
+[[changelog.commit_parsers]]
+message = "^feat"
+group = "Features"
+[[changelog.commit_parsers]]
+message = "^fix"
+group = "Bug Fixes"
+[[changelog.commit_parsers]]
+message = "^docs"
+group = "Documentation"
+[[changelog.commit_parsers]]
+message = "^refactor"
+group = "Refactoring"
+[[changelog.commit_parsers]]
+message = "^test"
+group = "Testing"
+[[changelog.commit_parsers]]
+message = "^chore"
+group = "Miscellaneous"
+[[changelog.commit_parsers]]
+message = "^ci"
+group = "CI/CD"
+[[changelog.commit_parsers]]
+message = "\\[skip ci\\]"
+skip = true

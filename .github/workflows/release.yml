@@ -1,23 +1,168 @@
+# Release orchestration, ported from XBlueSky/cc-loadout and extended for this
+# repo's extra version pin.
+#
+# The old shape was "push a tag by hand -> build binaries". That left the whole
+# front half of a release manual, and the three version files (Cargo.toml,
+# plugin.json, server-version) drifting until someone remembered all three. The
+# shape now is:
+#
+#   merge a feature PR -> release-plz opens/refreshes a "chore: release vX.Y.Z"
+#   PR carrying the bump + CHANGELOG + both plugin version files
+#     -> you merge that PR
+#       -> release-plz tags it and creates the GitHub Release
+#         -> this same run builds the four target binaries and attaches them
+#
+# The last arrow is why release-plz creates the Release rather than a
+# tag-triggered workflow: a tag pushed with GITHUB_TOKEN does not trigger other
+# workflows, so a separate tag-listening job would simply never fire.
 name: Release
 
 on:
   push:
-    tags: ["v[0-9]+.[0-9]+.[0-9]+*"]
+    branches: [main]
+  # Escape hatch: re-attach assets for whatever version Cargo.toml currently
+  # names, without waiting for a new release commit.
+  workflow_dispatch:
+    inputs:
+      force_assets:
+        description: "Rebuild and re-upload assets even if the release already has them"
+        type: boolean
+        default: false
 
 permissions:
   contents: write
+  pull-requests: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+# Never let two release runs race on tags or on the release PR.
+concurrency:
+  group: release
+  cancel-in-progress: false
 
 jobs:
-  create-release:
+  # `release` tags + creates the GitHub Release once a version bump has landed
+  # on main; `release-pr` then opens/refreshes the PR carrying the next bump.
+  # Config lives in release-plz.toml (publish = false — nothing reaches
+  # crates.io).
+  #
+  # NOTE: with the default GITHUB_TOKEN, PRs and tags created here do not
+  # trigger other workflows, so CI does not run on the release PR. Add a PAT as
+  # the RELEASE_PLZ_TOKEN secret to get that gate back; asset upload below does
+  # not depend on it either way.
+  release-plz:
+    name: release-plz
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: taiki-e/create-gh-release-action@v1
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          # release-plz needs full history + every v* tag to find the last
+          # release and compute the next version; a shallow clone makes it
+          # treat the run as an initial release and silently skip the bump.
+          fetch-depth: 0
+      - name: release
+        uses: release-plz/action@v0.5
+        with:
+          command: release
+        env:
+          GITHUB_TOKEN: ${{ secrets.RELEASE_PLZ_TOKEN || secrets.GITHUB_TOKEN }}
+      - name: release-pr
+        uses: release-plz/action@v0.5
+        with:
+          command: release-pr
+        env:
+          GITHUB_TOKEN: ${{ secrets.RELEASE_PLZ_TOKEN || secrets.GITHUB_TOKEN }}
+      # release-plz only bumps Cargo.toml/Cargo.lock/CHANGELOG.md. plugin.json
+      # and server-version carry the same number, and ci.yml asserts all three
+      # agree — without this the release PR would land a mismatch and turn main
+      # red. server-version is the one that actually matters at runtime: it is
+      # what launcher.sh downloads.
+      - name: sync plugin versions onto the release PR
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_PLZ_TOKEN || secrets.GITHUB_TOKEN }}
+        run: |
+          set -eu
+          branch="$(gh pr list --state open --json headRefName,title \
+            --jq '[.[] | select(.title | startswith("chore: release"))][0].headRefName')"
+          if [ -z "$branch" ] || [ "$branch" = "null" ]; then
+            echo "no open release PR — nothing to sync"; exit 0
+          fi
+          git fetch origin "$branch"
+          git checkout -B "$branch" "origin/$branch"
+          ./scripts/sync-versions.sh
+          # Both paths are spelled out rather than held in a variable. An
+          # unquoted expansion would be one pathspec containing a space in any
+          # shell that does not word-split, matching nothing — and a pathspec
+          # that matches nothing makes `git diff --quiet` exit 0, so this step
+          # would report "already in sync" and leave the mismatch on the PR.
+          if git diff --quiet -- \
+            plugins/cc-uplink/.claude-plugin/plugin.json \
+            plugins/cc-uplink/.claude-plugin/server-version; then
+            echo "plugin versions already in sync on ${branch}"; exit 0
+          fi
+          version="$(sed -n 's/^version = "\([^"]*\)".*/\1/p' Cargo.toml | head -1)"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "chore: sync plugin versions to ${version}" \
+            plugins/cc-uplink/.claude-plugin/plugin.json \
+            plugins/cc-uplink/.claude-plugin/server-version
+          git push origin "$branch"
+          echo "synced plugin versions to ${version} on ${branch}"
 
-  upload-assets:
-    needs: create-release
+  # Decide whether there is a release awaiting binaries. Derived from
+  # Cargo.toml + the GitHub API rather than from action outputs, so it stays
+  # correct on a manual workflow_dispatch too.
+  check:
+    name: check for release
+    runs-on: ubuntu-latest
+    needs: [release-plz]
+    outputs:
+      tag: ${{ steps.probe.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: probe
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          FORCE: ${{ inputs.force_assets }}
+        run: |
+          set -eu
+          version="$(sed -n 's/^version = "\([^"]*\)".*/\1/p' Cargo.toml | head -1)"
+          [ -n "$version" ] || { echo "could not read version from Cargo.toml" >&2; exit 1; }
+          if ! gh release view "v${version}" >/dev/null 2>&1; then
+            echo "tag=" >> "$GITHUB_OUTPUT"
+            echo "no release for v${version} yet — nothing to attach"
+            exit 0
+          fi
+          # Most pushes to main are plain feature merges: Cargo.toml still names
+          # the last released version, whose assets are already uploaded.
+          # Rebuilding four targets to re-upload identical bytes on every merge
+          # is pure waste, so only run when something is actually missing.
+          have="$(gh release view "v${version}" --json assets --jq '[.assets[].name] | join(" ")')"
+          missing=""
+          for t in x86_64-unknown-linux-musl aarch64-unknown-linux-musl \
+                   x86_64-apple-darwin aarch64-apple-darwin; do
+            case " $have " in
+              *" cc-uplink-$t.tar.gz "*) ;;
+              *) missing="$missing $t" ;;
+            esac
+          done
+          if [ -z "$missing" ] && [ "${FORCE:-false}" != "true" ]; then
+            echo "tag=" >> "$GITHUB_OUTPUT"
+            echo "release v${version} already carries every asset — nothing to attach"
+            exit 0
+          fi
+          echo "tag=v${version}" >> "$GITHUB_OUTPUT"
+          echo "release v${version} needs assets:${missing:- (forced rebuild)}"
+
+  # Target list, runner choice and asset layout must stay in step with
+  # plugins/cc-uplink/scripts/launcher.sh, which maps uname -s/-m onto these
+  # target triples and fetches `cc-uplink-<target>.tar.gz` plus its `.sha256`.
+  assets:
+    name: ${{ matrix.target }}
+    needs: [check]
+    if: needs.check.outputs.tag != ''
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
@@ -25,20 +170,28 @@ jobs:
           # musl => fully static: runs on any Linux with kernel >= 3.2,
           # including old-glibc hosts that gnu builds from ubuntu-22.04+
           # runners (glibc >= 2.35) cannot reach.
-          - target: x86_64-unknown-linux-musl
-            os: ubuntu-latest
-          - target: aarch64-unknown-linux-musl
-            os: ubuntu-24.04-arm
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-musl
+          - os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-musl
           # macos-13 (last Intel runner) is retired — cross-compile the
           # x86_64 slice on Apple Silicon instead (SDKs are multi-arch).
-          - target: x86_64-apple-darwin
-            os: macos-14
-          - target: aarch64-apple-darwin
-            os: macos-14
-    runs-on: ${{ matrix.os }}
+          - os: macos-14
+            target: x86_64-apple-darwin
+          - os: macos-14
+            target: aarch64-apple-darwin
     steps:
+      # Build from the tag, not from the default ref. They are usually the same
+      # commit, but main can advance while four targets compile — and a binary
+      # attached to v0.2.0 that was built from something later is exactly the
+      # skew the version pin exists to prevent.
       - uses: actions/checkout@v4
-      - name: Install musl toolchain
+        with:
+          ref: ${{ needs.check.outputs.tag }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+      - name: install musl toolchain
         if: contains(matrix.target, 'musl')
         run: |
           sudo apt-get update -qq && sudo apt-get install -y -qq musl-tools
@@ -51,14 +204,64 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
-      - uses: taiki-e/upload-rust-binary-action@v1
-        with:
-          bin: cc-uplink
-          target: ${{ matrix.target }}
-          # Never auto-select `cross`: its bootstrap assumes an x86_64 host
-          # and breaks on the arm64 runner. Every matrix row builds natively
-          # (or Apple cross-arch) with plain cargo.
-          build-tool: cargo
-          tar: unix
-          checksum: sha256
-          token: ${{ secrets.GITHUB_TOKEN }}
+      - run: cargo build --release --target ${{ matrix.target }} --verbose
+      # Archive layout and checksum naming reproduce what
+      # taiki-e/upload-rust-binary-action published for v0.1.0: the bare binary
+      # at the archive root, and a `<bin>-<target>.sha256` whose body names the
+      # .tar.gz so `sha256sum -c` works from the download dir. launcher.sh's
+      # verify step depends on exactly that shape.
+      - name: package asset
+        run: |
+          set -eu
+          bin="target/${{ matrix.target }}/release/cc-uplink"
+          test -f "$bin" || { echo "missing binary: $bin" >&2; exit 1; }
+          asset="cc-uplink-${{ matrix.target }}.tar.gz"
+          sum="cc-uplink-${{ matrix.target }}.sha256"
+          tar -czf "$asset" -C "target/${{ matrix.target }}/release" cc-uplink
+          if command -v sha256sum >/dev/null 2>&1; then
+            sha256sum "$asset" > "$sum"
+          else
+            shasum -a 256 "$asset" > "$sum"
+          fi
+          cat "$sum"
+      - name: upload to release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload "${{ needs.check.outputs.tag }}" \
+            "cc-uplink-${{ matrix.target }}.tar.gz" \
+            "cc-uplink-${{ matrix.target }}.sha256" --clobber
+
+  # The landing page bakes in the latest release tag and its download links at
+  # build time, and Cloudflare Pages' Git integration only rebuilds on push —
+  # so a release that lands no commit leaves the site advertising the old
+  # version. This poke lives here rather than in site.yml because only this
+  # workflow knows a release actually shipped: site.yml used to listen for
+  # `workflow_run: [Release]`, which meant "a release shipped" while Release
+  # was tag-triggered but would now mean "someone pushed to main".
+  #
+  # Skipped when CC_PAGES_DEPLOY_HOOK is unset, so the workflow stays green for
+  # a fork or before the hook is configured. Create the hook in the Pages
+  # project (Settings -> Builds & deployments -> Deploy hooks, branch main) and
+  # store its URL as a repository secret.
+  refresh-site:
+    name: refresh site
+    needs: [check, assets]
+    if: needs.check.outputs.tag != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Trigger a Pages rebuild so the release links are current
+        env:
+          HOOK: ${{ secrets.CC_PAGES_DEPLOY_HOOK }}
+        run: |
+          set -eu
+          if [ -z "${HOOK:-}" ]; then
+            echo "CC_PAGES_DEPLOY_HOOK is not set — skipping the rebuild."
+            echo "The site will still refresh on the next push to main."
+            exit 0
+          fi
+          # Fail loudly on a non-2xx: a silently-dropped rebuild means the site
+          # advertises a stale release for as long as main sits untouched.
+          curl --fail --silent --show-error -X POST "$HOOK" > /dev/null
+          echo "Pages rebuild triggered."
