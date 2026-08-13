@@ -93,7 +93,7 @@ impl Driver for ImageDriver {
     async fn send(&self, _addr: &str, _msg: SendRequest) -> Result<SendReceipt, DriverError> {
         Err(
             DriverError::new(ErrorKind::Rejected, "image channels do not accept messages")
-                .with_hint("use channel_invoke with op 'generate' or 'edit'"),
+                .with_hint("use channel_act with op 'generate' or 'edit'"),
         )
     }
 
@@ -153,6 +153,7 @@ mod tests {
             vec![OpSpec {
                 op: "generate".into(),
                 summary: "[mockai] gen".into(),
+                mutating: true,
                 params_schema: serde_json::json!({}),
                 result_schema: serde_json::json!({}),
             }]
@@ -215,7 +216,7 @@ mod tests {
             .err()
             .unwrap();
         assert!(matches!(e.kind, ErrorKind::Rejected));
-        assert!(e.hint.unwrap().contains("channel_invoke"));
+        assert!(e.hint.unwrap().contains("channel_act"));
     }
 
     #[tokio::test]

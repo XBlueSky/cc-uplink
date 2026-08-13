@@ -29,6 +29,10 @@ pub struct ChannelEntry {
 pub struct OpSpec {
     pub op: String,
     pub summary: String,
+    /// false = returns state without changing the world (routed via
+    /// channel_observe); true = injects, spends, or renames (channel_act).
+    #[serde(default)]
+    pub mutating: bool,
     pub params_schema: serde_json::Value,
     pub result_schema: serde_json::Value,
 }

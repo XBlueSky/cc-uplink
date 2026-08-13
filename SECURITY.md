@@ -20,5 +20,6 @@ we'll credit you in the advisory unless you prefer otherwise.
 
 The README's **Security posture** section documents the design decisions
 relevant to security review: argv-only process invocation (no shell text),
-loop prevention and optional send allowlists, env-only secrets, and the
-deliberate plaintext visibility of injected envelopes in tmux panes.
+loop prevention, deny-by-default tiered write permissions (human-only
+grants), env-only secrets, and the deliberate plaintext visibility of
+injected envelopes in tmux panes.

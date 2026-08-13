@@ -7,6 +7,9 @@
 
 use crate::core::driver::{ReplyHint, SendRequest};
 
+/// The human-affordances snippet shipped with the binary (see assets/).
+pub const TMUX_SNIPPET: &str = include_str!("../../assets/uplink.tmux");
+
 /// Format a single JSONL log record (as produced by `core::logsink::LogSink`)
 /// into the fixed-width text line `cc-uplink log` prints. Pure and
 /// side-effect free so it's unit-testable without a log file on disk.
@@ -119,8 +122,14 @@ pub async fn run(cmd: &str, rest: &[String]) -> anyhow::Result<()> {
             }
             Ok(())
         }
+        "tmux-snippet" => {
+            print!("{TMUX_SNIPPET}");
+            Ok(())
+        }
         other => {
-            eprintln!("unknown command '{other}'\nusage: cc-uplink [serve|doctor|send|invoke|log]");
+            eprintln!(
+                "unknown command '{other}'\nusage: cc-uplink [serve|doctor|send|invoke|log|tmux-snippet]"
+            );
             std::process::exit(2);
         }
     }
@@ -141,5 +150,18 @@ mod tests {
         let outl = format_log_line(&serde_json::json!({
             "ts":"T","dir":"out","channel":"tmux:codex","id":"ab12cd34","excerpt":"ping"}));
         assert_eq!(outl, "T  out tmux:codex      ab12cd34 ping");
+    }
+
+    #[test]
+    fn tmux_snippet_covers_grant_surface() {
+        let s = TMUX_SNIPPET;
+        for needle in [
+            "@uplink_profile",
+            "@uplink_read",
+            "display-menu",
+            "pane-border-format",
+        ] {
+            assert!(s.contains(needle), "snippet missing {needle}");
+        }
     }
 }

@@ -286,6 +286,7 @@ impl ImageBackend for OpenAiBackend {
             OpSpec {
                 op: "generate".into(),
                 summary: "[openai] generate image(s) via the OpenAI Images API; refs[] switches to the multi-image edits endpoint".into(),
+                mutating: true,
                 params_schema: serde_json::json!({
                     "type": "object",
                     "required": ["prompt"],
@@ -307,6 +308,7 @@ impl ImageBackend for OpenAiBackend {
             OpSpec {
                 op: "edit".into(),
                 summary: "[openai] edit an existing image (optional mask) via the OpenAI Images API".into(),
+                mutating: true,
                 params_schema: serde_json::json!({
                     "type": "object",
                     "required": ["input", "prompt"],

@@ -1,4 +1,5 @@
 pub mod control;
+pub mod policy;
 pub mod protocol;
 pub mod transport;
 
@@ -13,28 +14,54 @@ use tokio::sync::Mutex;
 use crate::config::TmuxCfg;
 use crate::core::driver::*;
 use crate::drivers::tmux::control::ControlMode;
+use crate::drivers::tmux::policy::{KeyClass, PaneMarks, PolicyCache, Tier};
 use crate::drivers::tmux::transport::{OneShotCli, OwnCtx, TmuxTransport, own_context};
 use crate::error::{DriverError, ErrorKind};
 
-pub const PANE_FMT: &str = "#{pane_id}|#{session_name}:#{window_index}.#{pane_index}|#{pane_current_command}|#{@name}|#{pane_current_path}";
+pub const PANE_FMT: &str = "#{pane_id}|#{session_name}:#{window_index}.#{pane_index}|#{pane_current_command}|#{@name}|#{@uplink_profile}|#{@uplink_read}|#{pane_current_path}";
 
-pub fn parse_pane_line(line: &str) -> Option<ChannelEntry> {
-    let mut it = line.splitn(5, '|');
-    let (pane, sw, proc_, label, cwd) =
-        (it.next()?, it.next()?, it.next()?, it.next()?, it.next()?);
+pub fn parse_pane_line(line: &str, cfg: &crate::config::TmuxCfg) -> Option<ChannelEntry> {
+    let fields: Vec<&str> = line.split('|').collect();
+    let pane = *fields.first()?;
+    // A '|' inside a free-form field (@name, cwd, command) shifts every
+    // positional field and could misreport profile/readable — the same
+    // corruption parse_marks() fails closed against. If the shape isn't the
+    // exact 7 fields, surface the pane at least privilege (observer,
+    // not-readable) rather than trusting shifted fields.
+    if fields.len() != 7 {
+        return Some(ChannelEntry {
+            channel: format!("tmux:{pane}"),
+            labels: vec![],
+            detail: serde_json::json!({
+                "profile": Tier::Observer.as_str(),
+                "readable": false,
+                "malformed": true,
+            }),
+        });
+    }
+    let (sw, proc_, label, profile, read, cwd) = (
+        fields[1], fields[2], fields[3], fields[4], fields[5], fields[6],
+    );
+    let marks = PaneMarks {
+        label: (!label.is_empty()).then(|| label.to_string()),
+        profile: Tier::parse(profile),
+        read_off: read == "off",
+    };
     Some(ChannelEntry {
         channel: format!("tmux:{pane}"),
-        labels: if label.is_empty() {
-            vec![]
-        } else {
-            vec![label.to_string()]
-        },
-        detail: serde_json::json!({ "sw": sw, "process": proc_, "cwd": cwd }),
+        labels: marks.label.clone().into_iter().collect(),
+        detail: serde_json::json!({
+            "sw": sw,
+            "process": proc_,
+            "cwd": cwd,
+            "profile": policy::effective_tier(&marks, cfg).as_str(),
+            "readable": policy::read_block(&marks, cfg).is_none(),
+        }),
     })
 }
 
 pub struct TmuxDriver {
-    cfg: TmuxCfg,
+    policy: PolicyCache,
     cli: OneShotCli,
     cm: Mutex<Option<Arc<ControlMode>>>,
     pub own: OwnCtx,
@@ -80,6 +107,19 @@ pub fn guard_ok(mark: Option<std::time::Instant>, ttl: Duration) -> bool {
     mark.map(|t| t.elapsed() <= ttl).unwrap_or(false)
 }
 
+/// Single-line semantics, same rail as `send`: control characters (incl. \n,
+/// \t) are rejected — multi-line input is multiple `type` calls, control keys
+/// go through the `keys` op.
+pub fn validate_type_text(text: &str) -> Result<(), DriverError> {
+    if text.chars().any(|c| c.is_control()) {
+        return Err(
+            DriverError::new(ErrorKind::Invalid, "text contains control characters")
+                .with_hint("multi-line: multiple type calls; special keys: the keys op"),
+        );
+    }
+    Ok(())
+}
+
 /// The error both idle-wait paths return when a pane never goes quiet.
 ///
 /// Carries its own triage, because this is a routine outcome rather than a
@@ -100,7 +140,7 @@ impl TmuxDriver {
             .await
             .ok();
         let d = Arc::new(Self {
-            cfg,
+            policy: PolicyCache::new(cfg),
             cli,
             cm: Mutex::new(cm),
             own,
@@ -268,6 +308,7 @@ impl TmuxDriver {
     }
 
     async fn op_read(&self, pane: &str, lines: u32) -> Result<serde_json::Value, DriverError> {
+        self.check_read(pane).await?;
         let out = self
             .run(&[
                 "capture-pane".into(),
@@ -286,16 +327,52 @@ impl TmuxDriver {
         Ok(serde_json::json!({ "text": out }))
     }
 
-    fn check_allowlist(&self, pane: &str, addr: &str) -> Result<(), DriverError> {
-        if let Some(list) = &self.cfg.allowlist {
-            if !list.iter().any(|x| x == pane || x == addr) {
-                return Err(DriverError::new(
-                    ErrorKind::Rejected,
-                    format!("target '{addr}' not in allowlist"),
-                ));
-            }
+    /// Read (never write) the pane's grant marks.
+    async fn pane_marks(&self, pane: &str) -> Result<PaneMarks, DriverError> {
+        let raw = self
+            .run(&[
+                "display-message".into(),
+                "-p".into(),
+                "-t".into(),
+                pane.into(),
+                "#{@name}|#{@uplink_profile}|#{@uplink_read}".into(),
+            ])
+            .await?;
+        Ok(policy::parse_marks(&raw))
+    }
+
+    /// Layer-1 write gate: effective tier must cover `needed`. Returns the
+    /// marks so callers can reuse them (label for escalation checks, etc.).
+    async fn check_write(
+        &self,
+        pane: &str,
+        needed: Tier,
+        what: &str,
+    ) -> Result<PaneMarks, DriverError> {
+        let marks = self.pane_marks(pane).await?;
+        let cfg = self.policy.current();
+        policy::require(policy::effective_tier(&marks, &cfg), needed, what)?;
+        Ok(marks)
+    }
+
+    /// Content gate: ops that return pane content (read, ask) are Forbidden on
+    /// read-blocked panes — at every tier.
+    async fn check_read(&self, pane: &str) -> Result<PaneMarks, DriverError> {
+        let marks = self.pane_marks(pane).await?;
+        let cfg = self.policy.current();
+        match policy::read_block(&marks, &cfg) {
+            None => Ok(marks),
+            Some(policy::ReadBlock::PaneOption) => Err(DriverError::new(
+                ErrorKind::Rejected,
+                "pane is read-blocked (@uplink_read off)",
+            )
+            .with_hint("a human can lift it: `tmux set -pu @uplink_read` on that pane")),
+            Some(policy::ReadBlock::ConfigGlob(g)) => Err(DriverError::new(
+                ErrorKind::Rejected,
+                format!("pane is read-blocked by config read_deny glob '{g}'"),
+            )
+            .with_hint("edit read_deny in config.toml (hot-reloaded)")),
         }
-        Ok(())
     }
 
     async fn target_session(&self, pane: &str) -> Result<String, DriverError> {
@@ -511,6 +588,7 @@ impl TmuxDriver {
             .and_then(|v| v.as_u64())
             .unwrap_or(120_000);
 
+        self.check_read(pane).await?;
         let h0 = self.history_size(pane).await?;
         // No reply hint: `ask` captures the peer's transcript itself, so asking
         // it to send the answer back is pure overhead — and against a TUI peer
@@ -555,6 +633,67 @@ impl TmuxDriver {
             .insert(pane.to_string(), std::time::Instant::now());
         Ok(serde_json::json!({ "transcript": transcript, "receipt": receipt }))
     }
+
+    /// Raw console injection: literal text, optional Enter, then return.
+    /// Deliberately fire-and-forget — no echo verification, no idle wait —
+    /// because raw consoles (nc, telnet, password prompts) break every
+    /// assumption send's verify loop makes. Each tmux command still has the
+    /// transport's hard 10 s timeout, so nothing here can hang. Confirmation
+    /// is the caller's job: read the pane afterwards.
+    async fn op_type(
+        &self,
+        pane: &str,
+        args: &serde_json::Value,
+    ) -> Result<serde_json::Value, DriverError> {
+        let text = args
+            .get("text")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| DriverError::new(ErrorKind::Invalid, "type requires 'text'"))?;
+        let enter = args.get("enter").and_then(|v| v.as_bool()).unwrap_or(false);
+        let sensitive = args
+            .get("sensitive")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        validate_type_text(text)?;
+        if pane == self.own.pane {
+            return Err(DriverError::new(
+                ErrorKind::Rejected,
+                "cannot type into own pane",
+            ));
+        }
+        self.check_write(pane, Tier::Operator, "type").await?;
+        let mark = self.read_marks.lock().await.get(pane).copied();
+        if !guard_ok(mark, Duration::from_secs(60)) {
+            return Err(DriverError::new(
+                ErrorKind::Rejected,
+                "read guard: pane not read recently",
+            )
+            .with_hint("invoke read on this pane first — look, then type"));
+        }
+        self.run(&[
+            "send-keys".into(),
+            "-t".into(),
+            pane.into(),
+            "-l".into(),
+            "--".into(),
+            text.into(),
+        ])
+        .await?;
+        if enter {
+            self.run(&["send-keys".into(), "-t".into(), pane.into(), "Enter".into()])
+                .await?;
+        }
+        self.sink.append(&serde_json::json!({
+            "ts": now_rfc3339(),
+            "dir": "out",
+            "channel": format!("tmux:{pane}"),
+            "op": "type",
+            "excerpt": if sensitive { "[redacted]" } else { text },
+            "len": text.chars().count(),
+            "enter": enter,
+        }));
+        Ok(serde_json::json!({ "typed": text.chars().count(), "enter": enter }))
+    }
 }
 
 pub use crate::core::now_rfc3339;
@@ -578,7 +717,11 @@ impl Driver for TmuxDriver {
                 PANE_FMT.into(),
             ])
             .await?;
-        Ok(out.lines().filter_map(parse_pane_line).collect())
+        let cfg = self.policy.current();
+        Ok(out
+            .lines()
+            .filter_map(|l| parse_pane_line(l, &cfg))
+            .collect())
     }
 
     fn ops(&self) -> Vec<OpSpec> {
@@ -586,30 +729,42 @@ impl Driver for TmuxDriver {
             OpSpec {
                 op: "read".into(),
                 summary: "capture last N lines of a pane".into(),
+                mutating: false,
                 params_schema: serde_json::json!({"type":"object","properties":{"lines":{"type":"integer","default":50}}}),
                 result_schema: serde_json::json!({"type":"object","properties":{"text":{"type":"string"}}}),
             },
             OpSpec {
                 op: "keys".into(),
                 summary: "send special keys (Enter, Escape, C-c); requires read within 60s".into(),
+                mutating: true,
                 params_schema: serde_json::json!({"type":"object","required":["keys"],"properties":{"keys":{"type":"array","items":{"type":"string"}}}}),
                 result_schema: serde_json::json!({"type":"object"}),
             },
             OpSpec {
+                op: "type".into(),
+                summary: "type literal text into a raw console (fire-and-forget; read afterwards to confirm)".into(),
+                mutating: true,
+                params_schema: serde_json::json!({"type":"object","required":["text"],"properties":{"text":{"type":"string"},"enter":{"type":"boolean","default":false},"sensitive":{"type":"boolean","default":false}}}),
+                result_schema: serde_json::json!({"type":"object","properties":{"typed":{"type":"integer"},"enter":{"type":"boolean"}}}),
+            },
+            OpSpec {
                 op: "label".into(),
                 summary: "set pane @name label".into(),
+                mutating: true,
                 params_schema: serde_json::json!({"type":"object","required":["name"],"properties":{"name":{"type":"string"}}}),
                 result_schema: serde_json::json!({"type":"object"}),
             },
             OpSpec {
                 op: "await_idle".into(),
                 summary: "wait until pane output is quiet".into(),
+                mutating: false,
                 params_schema: serde_json::json!({"type":"object","properties":{"quiet_ms":{"type":"integer","default":1500},"timeout_ms":{"type":"integer","default":60000}}}),
                 result_schema: serde_json::json!({"type":"object","properties":{"idle":{"type":"boolean"}}}),
             },
             OpSpec {
                 op: "ask".into(),
                 summary: "send + await_idle + capture transcript delta".into(),
+                mutating: true,
                 params_schema: serde_json::json!({"type":"object","required":["message"],"properties":{"message":{"type":"string"},"quiet_ms":{"type":"integer","default":1500},"timeout_ms":{"type":"integer","default":120000}}}),
                 result_schema: serde_json::json!({"type":"object","properties":{"transcript":{"type":"string"},"receipt":{"type":"object"}}}),
             },
@@ -624,7 +779,7 @@ impl Driver for TmuxDriver {
                 "cannot send to own pane (loop prevention)",
             ));
         }
-        self.check_allowlist(&pane, addr)?;
+        let marks = self.check_write(&pane, Tier::Operator, "send").await?;
         if msg.message.chars().any(|c| c.is_control()) {
             return Err(DriverError::new(
                 ErrorKind::Invalid,
@@ -691,6 +846,15 @@ impl Driver for TmuxDriver {
                 Ok(receipt)
             }
             None => {
+                let err = DriverError::new(ErrorKind::Timeout, "could not verify injected text")
+                    .with_hint("target TUI may have consumed input; inspect with read op");
+                // A read-blocked pane must never have its content captured into
+                // an error's evidence field, even though error.rs render() drops
+                // evidence today — the enforcement belongs at the source, not
+                // downstream of a rendering detail that could change.
+                if policy::read_block(&marks, &self.policy.current()).is_some() {
+                    return Err(err);
+                }
                 let cap = self
                     .run(&[
                         "capture-pane".into(),
@@ -710,11 +874,7 @@ impl Driver for TmuxDriver {
                     .chars()
                     .rev()
                     .collect();
-                Err(
-                    DriverError::new(ErrorKind::Timeout, "could not verify injected text")
-                        .with_evidence(tail)
-                        .with_hint("target TUI may have consumed input; inspect with read op"),
-                )
+                Err(err.with_evidence(tail))
             }
         }
     }
@@ -736,6 +896,35 @@ impl Driver for TmuxDriver {
                     .get("name")
                     .and_then(|v| v.as_str())
                     .ok_or_else(|| DriverError::new(ErrorKind::Invalid, "label requires 'name'"))?;
+                // Own pane: self-naming is identity, not an attack surface —
+                // ungated (write gates would make first-run labeling impossible).
+                if pane != self.own.pane {
+                    let marks = self.check_write(&pane, Tier::Operator, "label").await?;
+                    let cfg = self.policy.current();
+                    let eff = policy::effective_tier(&marks, &cfg);
+                    if policy::label_escalates(name, eff, &cfg) {
+                        return Err(DriverError::new(
+                            ErrorKind::Rejected,
+                            format!(
+                                "renaming to '{name}' would raise this pane's config-granted tier"
+                            ),
+                        )
+                        .with_hint(
+                            "rename-as-escalation is blocked; ask the human to set the label",
+                        ));
+                    }
+                    if policy::label_unblocks_read(&marks, name, &cfg) {
+                        return Err(DriverError::new(
+                            ErrorKind::Rejected,
+                            format!(
+                                "renaming to '{name}' would lift this pane's config read-block"
+                            ),
+                        )
+                        .with_hint(
+                            "a read-denied pane cannot be renamed out of its read_deny glob; ask the human",
+                        ));
+                    }
+                }
                 self.run(&[
                     "set-option".into(),
                     "-p".into(),
@@ -754,7 +943,24 @@ impl Driver for TmuxDriver {
                         "cannot send keys to own pane",
                     ));
                 }
-                self.check_allowlist(&pane, addr)?;
+                let keys = args.get("keys").and_then(|v| v.as_array()).ok_or_else(|| {
+                    DriverError::new(ErrorKind::Invalid, "keys requires 'keys' array")
+                })?;
+                let mut needed = Tier::Operator;
+                for k in keys {
+                    let k = k.as_str().ok_or_else(|| {
+                        DriverError::new(ErrorKind::Invalid, "keys must be strings")
+                    })?;
+                    if policy::classify_key(k)? == KeyClass::Dangerous {
+                        needed = Tier::Godmode;
+                    }
+                }
+                let what = if needed == Tier::Godmode {
+                    "keys (dangerous chord)"
+                } else {
+                    "keys"
+                };
+                self.check_write(&pane, needed, what).await?;
                 let mark = self.read_marks.lock().await.get(&pane).copied();
                 if !guard_ok(mark, Duration::from_secs(60)) {
                     return Err(DriverError::new(
@@ -763,9 +969,6 @@ impl Driver for TmuxDriver {
                     )
                     .with_hint("invoke read on this pane first"));
                 }
-                let keys = args.get("keys").and_then(|v| v.as_array()).ok_or_else(|| {
-                    DriverError::new(ErrorKind::Invalid, "keys requires 'keys' array")
-                })?;
                 for k in keys {
                     let k = k.as_str().ok_or_else(|| {
                         DriverError::new(ErrorKind::Invalid, "keys must be strings")
@@ -781,6 +984,7 @@ impl Driver for TmuxDriver {
                 }
                 Ok(serde_json::json!({ "sent": keys.len() }))
             }
+            "type" => self.op_type(&pane, &args).await,
             "await_idle" => {
                 let quiet_ms = args
                     .get("quiet_ms")
@@ -840,6 +1044,64 @@ impl Driver for TmuxDriver {
             "own pane:      {} (session {})",
             self.own.pane, self.own.session
         ));
+        let cfg = self.policy.current();
+        lines.push(format!(
+            "policy:        {} write_allow glob(s), {} read_deny glob(s), config {}",
+            cfg.write_allow.len(),
+            cfg.read_deny.len(),
+            self.policy
+                .path()
+                .map(|p| p.display().to_string())
+                .unwrap_or_else(|| "none (defaults)".into()),
+        ));
+        if cfg.allowlist.is_some() {
+            lines.push(
+                "WARN: 'allowlist' was removed — migrate to write_allow (docs/configuration.md)"
+                    .into(),
+            );
+        }
+        if let Ok(out) = self
+            .run(&[
+                "list-panes".into(),
+                "-a".into(),
+                "-F".into(),
+                "#{pane_id}|#{@uplink_profile}|#{@uplink_read}|#{@name}".into(),
+            ])
+            .await
+        {
+            let mut granted = 0usize;
+            for l in out.lines() {
+                // Name is last so a '|' inside it (a free-form field) can't
+                // shift pane_id/profile/read — same shape-safety as parse_marks.
+                let mut it = l.splitn(4, '|');
+                let (pane, prof, read, name) = (
+                    it.next().unwrap_or(""),
+                    it.next().unwrap_or(""),
+                    it.next().unwrap_or(""),
+                    it.next().unwrap_or(""),
+                );
+                if let Some(t) = crate::drivers::tmux::policy::Tier::parse(prof) {
+                    granted += 1;
+                    let pane_option_blind = read == "off";
+                    let config_glob_blind = !name.is_empty()
+                        && cfg
+                            .read_deny
+                            .iter()
+                            .any(|g| crate::drivers::tmux::policy::glob_match(g, name));
+                    if t >= crate::drivers::tmux::policy::Tier::Operator
+                        && (pane_option_blind || config_glob_blind)
+                    {
+                        lines.push(format!(
+                            "WARN: {pane} is {} but read-blocked — the read guard makes it untypeable",
+                            t.as_str()
+                        ));
+                    }
+                }
+            }
+            lines.push(format!(
+                "grants:        {granted} pane(s) with @uplink_profile"
+            ));
+        }
         DoctorReport {
             driver: "tmux".into(),
             ok,
@@ -886,16 +1148,32 @@ mod tests {
 
     #[test]
     fn parses_pane_line() {
-        let e = parse_pane_line("%3|main:0.1|node|codex|/home/t/proj").unwrap();
+        let cfg = crate::config::TmuxCfg::default();
+        let e = parse_pane_line("%3|main:0.1|node|codex|operator||/home/t/proj", &cfg).unwrap();
         assert_eq!(e.channel, "tmux:%3");
         assert_eq!(e.labels, vec!["codex".to_string()]);
         assert_eq!(e.detail["process"], "node");
+        assert_eq!(e.detail["profile"], "operator");
+        assert_eq!(e.detail["readable"], true);
     }
 
     #[test]
-    fn empty_label_gives_no_labels() {
-        let e = parse_pane_line("%0|main:0.0|zsh||/home/t").unwrap();
+    fn empty_label_gives_no_labels_and_observer() {
+        let cfg = crate::config::TmuxCfg::default();
+        let e = parse_pane_line("%0|main:0.0|zsh|||off|/home/t", &cfg).unwrap();
         assert!(e.labels.is_empty());
+        assert_eq!(e.detail["profile"], "observer");
+        assert_eq!(e.detail["readable"], false); // @uplink_read off
+    }
+
+    #[test]
+    fn pipe_in_label_fails_closed_in_listing() {
+        let cfg = crate::config::TmuxCfg::default();
+        // @name "codex|admin" injects an extra '|' → 8 fields → fail closed.
+        let e = parse_pane_line("%3|main:0.1|node|codex|admin|operator||/home/t", &cfg).unwrap();
+        assert_eq!(e.channel, "tmux:%3"); // pane still listed
+        assert_eq!(e.detail["profile"], "observer"); // not the shifted "admin"/config value
+        assert_eq!(e.detail["readable"], false); // not flipped to true by the shift
     }
 
     #[test]
@@ -917,5 +1195,19 @@ mod tests {
             rendered.contains("read"),
             "an idle timeout must point at the read op: {rendered}"
         );
+    }
+}
+
+#[cfg(test)]
+mod type_tests {
+    use super::*;
+
+    #[test]
+    fn type_text_rejects_control_chars() {
+        assert!(validate_type_text("ls -la /tmp").is_ok());
+        assert!(validate_type_text("Enter").is_ok()); // literal word, not the key
+        let e = validate_type_text("do\nthing").unwrap_err();
+        assert!(matches!(e.kind, ErrorKind::Invalid));
+        assert!(validate_type_text("tab\there").is_err());
     }
 }
